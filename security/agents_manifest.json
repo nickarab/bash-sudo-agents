@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "name": "agente_bash",
+      "call_tag": "@agente_bash",
+      "role": "Operador de terminal e automações",
+      "description": "Subagente responsável por interagir diretamente com o usuário para planejar e executar tarefas de terminal/bash. Delega comandos que necessitam de privilégios elevados exclusivamente para o agente_sudo.",
+      "enable_write_tools": true,
+      "enable_subagent_tools": true
+    },
+    {
+      "name": "agente_sudo",
+      "call_tag": "@agente_sudo",
+      "role": "Auditor interno e executor com privilégios de superusuário",
+      "description": "Comunica-se exclusivamente com o agente_bash. Valida comandos contra policies.json e executa via sudo_runner.sh.",
+      "enable_write_tools": true,
+      "enable_subagent_tools": true
+    },
+    {
+      "name": "agente_sudo_policy",
+      "call_tag": "@agente_sudo_policy",
+      "role": "Gestor de políticas e governança",
+      "description": "Chamado diretamente pelo usuário para consultar, criar, atualizar ou remover regras de auditoria que o agente_sudo aplica sobre o agente_bash.",
+      "enable_write_tools": true,
+      "enable_subagent_tools": false
+    }
+  ]
+}

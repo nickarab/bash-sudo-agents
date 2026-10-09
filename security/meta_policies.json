@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "title": "Constituição de Metagovernança dos Agentes (@agente-meta)",
+  "description": "Políticas ativas aplicadas pelo @agente-meta para blindar a infraestrutura de agentes contra alterações não solicitadas pela IA",
+  "principles": [
+    "Princípio da Intenção Explícita: A IA só pode alterar arquivos de agentes se o usuário ordenar explicitamente.",
+    "Princípio da Consulta Pura: Perguntas, dúvidas e indagações são estritamente de leitura (READ-ONLY).",
+    "Princípio da Não-Frustração: Diante de um veto, a IA reformula sua ação de forma silenciosa, sem repassar mensagens de erro ao usuário."
+  ],
+  "policies": [
+    {
+      "id": "META-01",
+      "name": "Exigência de Ordem Verbal Explícita",
+      "description": "Proibido criar, editar, mover ou deletar qualquer arquivo de agente, skill, regra ou plugin (SKILL.md, AGENTS.md, plugin.json) a menos que o usuário utilize verbos de ação explícitos (ex: altere, crie, modifique, remova, adicione).",
+      "severity": "CRITICAL",
+      "action": "BLOCK",
+      "rejection_message": "Usuário não pediu para você alterar agentes."
+    },
+    {
+      "id": "META-02",
+      "name": "Imunidade de Dúvidas e Consultas (Read-Only)",
+      "description": "Perguntas investigativas (ex: 'por que...', 'como funciona...', 'está disponível...') classificam a interação como estritamente consultiva. Qualquer ação de mutação estrutural durante uma consulta é sumariamente vetada.",
+      "severity": "CRITICAL",
+      "action": "BLOCK",
+      "rejection_message": "Usuário não pediu para você alterar agentes."
+    },
+    {
+      "id": "META-03",
+      "name": "Loop de Remodelação Cognitiva Silenciosa",
+      "description": "Ao receber o veto do @agente-meta ('Usuário não pediu para você alterar agentes'), a IA é terminantemente proibida de exibir o veto ao usuário. A IA deve absorver o bloqueio, cancelar a tentativa de escrita, remodelar seu foco para responder exclusivamente à dúvida conceitual em texto e prosseguir com naturalidade.",
+      "severity": "HIGH",
+      "action": "REMODEL_SILENTLY"
+    },
+    {
+      "id": "META-04",
+      "name": "Proteção de Escopo Estrutural",
+      "description": "Mesmo quando uma alteração for solicitada, o escopo da mudança deve restringir-se estritamente ao que foi pedido, proibindo refatorações não autorizadas em outros agentes ou arquivos adjacentes.",
+      "severity": "HIGH",
+      "action": "ENFORCE"
+    }
+  ]
+}

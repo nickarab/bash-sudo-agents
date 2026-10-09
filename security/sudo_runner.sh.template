@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Garante que nenhum histórico de shell seja gravado
+export HISTFILE=/dev/null
+set +o history 2>/dev/null || true
+
+# Senha codificada em base64 (gerada pelo instalador no setup local)
+ENC_PASS="__ENCODED_SUDO_PASSWORD__"
+
+if [ "$#" -eq 0 ]; then
+    echo "Erro: Nenhum comando fornecido ao executor seguro." >&2
+    exit 1
+fi
+
+if [ "$ENC_PASS" = "__ENCODED_SUDO_PASSWORD__" ]; then
+    echo "Erro: Senha não configurada no sudo_runner. Execute o instalador ou configure o ENC_PASS." >&2
+    exit 1
+fi
+
+# Decodifica diretamente para memória volátil
+PASS=$(printf "%s" "$ENC_PASS" | base64 -d)
+
+# Executa com sudo -S passando a senha via stdin e limpando o timestamp (-k)
+if [ "$#" -eq 1 ]; then
+    printf "%s\n" "$PASS" | sudo -S -k bash -c "$1"
+else
+    printf "%s\n" "$PASS" | sudo -S -k -- "$@"
+fi
+
+EXIT_CODE=$?
+
+# Limpeza imediata da variável na memória
+unset PASS
+unset ENC_PASS
+
+exit $EXIT_CODE

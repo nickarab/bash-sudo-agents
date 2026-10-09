@@ -1,0 +1,12 @@
+# Credenciais e scripts com segredos locais
+sudo_runner.sh
+*.tar.gz
+*.bak
+*.tmp
+*~
+
+# Logs locais
+*.log
+
+# Backups
+backup_*/

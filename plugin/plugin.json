@@ -1,0 +1,5 @@
+{
+  "name": "bash-sudo-agents",
+  "version": "1.0.0",
+  "description": "Sistema global de agentes: @agente_bash (operador de terminal) governado pelo @agente_sudo (auditor de segurança) com políticas ativas em policies.json"
+}

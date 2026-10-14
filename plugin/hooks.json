@@ -1,0 +1,16 @@
+{
+  "governance-gate": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/governance-gate.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

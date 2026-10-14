@@ -117,29 +117,31 @@ O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens an
 
 ---
 
-## 📡 Contrato de Comunicação entre Agentes
+## 📡 Contrato de Runtime do Motor PreToolUse
 
-A comunicação interna entre o operador e o auditor de segurança segue o schema JSON obrigatório:
+O motor `governance-gate.py` opera como barreira física interceptando cada chamada de ferramenta enviada pelo Antigravity:
 
-### 📤 1. Proposta (`@agente-bash` ➔ `@agente-sudo`)
+### 📥 Entrada (Stdin: Payload do Antigravity)
 ```json
 {
-  "command": "systemctl restart bluetooth.service",
-  "objective": "Restaurar conectividade do daemon Bluetooth após queda.",
-  "blast_radius": [
-    "bluetooth.service"
-  ],
-  "attempt": 1
+  "toolCall": {
+    "name": "run_command",
+    "args": {
+      "CommandLine": "systemctl restart bluetooth.service"
+    }
+  },
+  "cwd": "/home/user"
 }
 ```
 
-### 📥 2. Deliberação (`@agente-sudo` ➔ `@agente-bash`)
+### 📤 Saída (Stdout: Deliberação Física do Motor)
 ```json
 {
-  "status": "APPROVED | MITIGATED | VETOED | ESCALATED",
-  "mitigated_command": null,
-  "reason": "Comando em estrita conformidade com a demanda e com a RULE-04.",
-  "attempt": 1
+  "decision": "allow | deny | force_ask",
+  "reason": "Justificativa constitucional ou aviso de contenção física",
+  "overwrite": {
+    "CommandLine": "comando otimizado ou redirecionado para cache"
+  }
 }
 ```
 

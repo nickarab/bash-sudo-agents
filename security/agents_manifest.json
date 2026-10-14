@@ -1,26 +1,30 @@
 {
-  "agents": [
+  "system": "Antigravity Linux Governance Framework",
+  "version": "4.0",
+  "architecture": "Engenharia Sincera: Operador LLM + Guardião de Runtime em Python + Gestor Legislativo",
+  "components": [
     {
       "name": "agente_bash",
       "call_tag": "@agente-bash",
+      "type": "llm_agent",
       "role": "Operador de terminal e automações",
-      "description": "Subagente responsável por interagir diretamente com o usuário para planejar e executar tarefas de terminal/bash. Submete comandos privilegiados ao agente_sudo para auditoria.",
+      "description": "Agente responsável por interagir diretamente com o usuário para planejar, diagnosticar e executar tarefas de terminal/bash.",
       "enable_write_tools": true,
       "enable_subagent_tools": true
     },
     {
-      "name": "agente_sudo",
-      "call_tag": "@agente-sudo",
-      "role": "Auditor interno e governança de privilégios",
-      "description": "Auditor em tempo de execução. Valida comandos contra policies.json e autoriza a execução via regras cirúrgicas de sudoers ou prompt nativo seguro.",
-      "enable_write_tools": false,
-      "enable_subagent_tools": false
+      "name": "governance_gate_py",
+      "type": "runtime_engine",
+      "role": "Motor de governança, firewall e contenção no runtime (PreToolUse)",
+      "description": "Script Python nativo executado fisicamente no nível do SO pelo Antigravity. Aplica as regras de segurança (RULE-01 a RULE-15), veto sumário a destruição, auto-compressão de saídas e cache local com TTL.",
+      "file": "plugin/hooks/governance-gate.py"
     },
     {
       "name": "agente_sudo_policy",
       "call_tag": "@agente-sudo-policy",
+      "type": "llm_agent",
       "role": "Gestor de políticas e governança",
-      "description": "Chamado diretamente pelo usuário para consultar, criar, atualizar ou remover regras e políticas dos agentes em policies.json e AGENTS.md.",
+      "description": "Agente legislador chamado diretamente pelo usuário para consultar, criar, atualizar ou revogar regras em policies.json e AGENTS.md.",
       "enable_write_tools": true,
       "enable_subagent_tools": false
     }

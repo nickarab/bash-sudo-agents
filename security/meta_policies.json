@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
-  "title": "Constituição de Metagovernança dos Agentes (@agente-meta)",
-  "description": "Políticas ativas aplicadas pelo @agente-meta para blindar a infraestrutura de agentes contra alterações não solicitadas pela IA",
+  "version": "4.0",
+  "title": "Constituição de Metagovernança dos Agentes (v4.0)",
+  "description": "Políticas ativas sob autoridade legislativa do @agente-sudo-policy e fiscalização física do motor governance-gate.py para blindar a infraestrutura de agentes contra alterações não solicitadas pela IA",
   "principles": [
     "Princípio da Intenção Explícita: A IA só pode alterar arquivos de agentes se o usuário ordenar explicitamente.",
     "Princípio da Consulta Pura: Perguntas, dúvidas e indagações são estritamente de leitura (READ-ONLY).",
@@ -27,7 +27,7 @@
     {
       "id": "META-03",
       "name": "Loop de Remodelação Cognitiva Silenciosa",
-      "description": "Ao receber o veto do @agente-meta ('Usuário não pediu para você alterar agentes'), a IA é terminantemente proibida de exibir o veto ao usuário. A IA deve absorver o bloqueio, cancelar a tentativa de escrita, remodelar seu foco para responder exclusivamente à dúvida conceitual em texto e prosseguir com naturalidade.",
+      "description": "Ao receber o veto do motor de governança ('Usuário não pediu para você alterar agentes'), a IA é terminantemente proibida de exibir o veto ao usuário. A IA deve absorver o bloqueio, cancelar a tentativa de escrita, remodelar seu foco para responder exclusivamente à dúvida conceitual em texto e prosseguir com naturalidade.",
       "severity": "HIGH",
       "action": "REMODEL_SILENTLY"
     },

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 governance-gate.py — Antigravity Linux Governance Engine (v4.0)
-Arquitetura Multi-Agente: @agente-bash, @agente-sudo, @agente-sudo-policy, @agente-meta.
+Arquitetura do Sistema:
+  - @agente-bash: Operador de Terminal (LLM)
+  - governance-gate.py: Motor de Governança, Firewall, Cache e Compressor físico no SO (Runtime Hook)
+  - @agente-sudo-policy: Gestor Constitucional Legislativo (LLM)
 Recursos:
   1. Auditoria e Firewall Constitucional (RULE-01 a RULE-15)
   2. Auto-Compressor Sintático de Tokens (overwrite com blindagem de sintaxe)
@@ -47,8 +50,14 @@ def audit_and_optimize():
     # =========================================================================
 
     # RULE-06: Veto irreversível ao sudo_runner legado
-    if "sudo_runner" in cmd:
-        out("deny", "sudo_runner.sh foi descontinuado. Utilize o fluxo nativo ou NOPASSWD configurado.")
+    SUDO_RUNNER_PATTERN = re.compile(
+        r'(^|[;&|`\$\(\)])\s*((sudo|doas|exec|env|bash|sh|source|\.)\s+)?(\S+/)?sudo_runner(\.sh)?(\s|$)'
+    )
+    if SUDO_RUNNER_PATTERN.search(cmd):
+        out(
+            "deny",
+            "[governance-gate / RULE-06] sudo_runner.sh foi descontinuado. Utilize o fluxo nativo ou NOPASSWD configurado."
+        )
 
     # RULE-02: Veto sumário anti-destruição em diretórios vitais do sistema
     DESTRUCTIVE_PATTERN = re.compile(
@@ -57,7 +66,7 @@ def audit_and_optimize():
     if DESTRUCTIVE_PATTERN.search(cmd):
         out(
             "deny",
-            "[@agente-sudo / RULE-02] Veto sumário: remoção recursiva na raiz (/) ou em diretórios vitais do sistema é terminantemente proibida."
+            "[governance-gate / RULE-02] Veto sumário: remoção recursiva na raiz (/) ou em diretórios vitais do sistema é terminantemente proibida."
         )
 
     # RULE-01: Soberania do Display e monitores.lua
@@ -65,7 +74,7 @@ def audit_and_optimize():
     if MONITOR_PATTERN.search(cmd) or MONITOR_PATTERN.search(target):
         out(
             "force_ask",
-            "[@agente-sudo / RULE-01] Alteração em configuração de monitores detectada (monitors.lua). Confirme apenas se solicitou expressamente."
+            "[governance-gate / RULE-01] Alteração em configuração de monitores detectada (monitors.lua). Confirme apenas se solicitou expressamente."
         )
 
     # RULE-15: Taxonomia de Comandos com Privilégios Elevados
@@ -75,23 +84,23 @@ def audit_and_optimize():
     if PRIV_PATTERN.search(cmd):
         out(
             "force_ask",
-            "[@agente-sudo / RULE-15] Comando com privilégios de superusuário detectado. Confirme se atende estritamente à sua demanda."
+            "[governance-gate / RULE-15] Comando com privilégios de superusuário detectado. Confirme se atende estritamente à sua demanda."
         )
 
     # RULE-11 e RULE-12: Proteção da Infraestrutura de Governança
     GOV_PATTERN = re.compile(r'plugins/bash-sudo-agents/|scratch/security/|\.gemini/config/config\.json')
     WRITE_OPS_PATTERN = re.compile(
-        r'(>|tee|sed\s+-i|chmod|chown|chattr|rm|mv|cp|install|shred)'
+        r'(>|tee|sed\s+-i|(^|[;&|\s])(chmod|chown|chattr|rm|mv|cp|install|shred)(\s|$))'
     )
     if target and GOV_PATTERN.search(target):
         out(
             "force_ask",
-            "[@agente-meta / RULE-12] Escrita em arquivo de governança detectada. Confirme se você solicitou a alteração ao @agente-sudo-policy."
+            "[governance-gate / RULE-12] Escrita em arquivo de governança detectada. Confirme se você solicitou a alteração ao @agente-sudo-policy."
         )
     if GOV_PATTERN.search(cmd) and WRITE_OPS_PATTERN.search(cmd):
         out(
             "force_ask",
-            "[@agente-meta / RULE-12] Comando tenta modificar arquivo de governança. Confirme se solicitou ao @agente-sudo-policy."
+            "[governance-gate / RULE-12] Comando tenta modificar arquivo de governança. Confirme se solicitou ao @agente-sudo-policy."
         )
 
     if not cmd:

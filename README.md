@@ -30,7 +30,7 @@
   <tr>
     <td width="50%">
       <h3>🛡️ Dupla Barreira & Separação de Poderes</h3>
-      O operador de terminal (<code>@agente-bash</code>) é proibido de executar comandos privilegiados diretamente. Toda elevação passa pela auditoria do <code>@agente-sudo</code> e é fisicamente fiscalizada no sistema pelo motor Python <code>governance-gate.py</code>.
+      O operador de terminal (<code>@agente-bash</code>) é orientado por princípios estritos. Toda elevação é fisicamente fiscalizada no sistema pelo motor Python <code>governance-gate.py</code>, sob governança legislativa do <code>@agente-sudo-policy</code>.
     </td>
     <td width="50%">
       <h3>⚡ Auto-Compressor Sintático de Tokens</h3>
@@ -57,31 +57,28 @@
 flowchart TD
     User(["👤 Usuário Administrador"]) <-->|"Comandos e Diagnósticos"| Bash["🖥️ @agente-bash<br/>(Operador de Terminal)"]
     
-    subgraph Sandbox["⚙️ Execução e Auditoria em Tempo Real"]
+    subgraph Sandbox["⚙️ Execução e Contenção no Runtime"]
         Bash -->|"1. Leitura e Diagnóstico Livre"| TermBash["Terminal Seguro: Pipes Limitadores"]
-        Bash -->|"2. Deliberação e Payload JSON"| Sudo{"🛡️ @agente-sudo<br/>(Auditor Cognitivo)"}
+        Bash -->|"2. Disparo de Operação"| Gate{"🚧 governance-gate.py<br/>(Motor Python PreToolUse)"}
         
-        Sudo -->|"Aprovado ou Mitigado"| RunCmd["Disparo via run_command"]
-        Sudo -->|"Vetado"| LoopAdapt["Loop de Auto-Adaptação Autônoma"]
-        LoopAdapt -->|"Nova Tentativa Segura (até 3)"| Sudo
-        
-        RunCmd --> Gate{"🚧 governance-gate.py<br/>(Motor Python PreToolUse)"}
         Gate -->|"Cache Hit (TTL Válido)"| CacheRead["Leitura Instantânea de Cache"]
         Gate -->|"allow: seguro / otimizado"| OSExec["Execução no Linux"]
         Gate -->|"force_ask: sudo / privilégios / monitores"| PromptUser["Card Nativo de Senha / Confirmação"]
         Gate -->|"deny: rm -rf raiz / destruição vital"| HardBlock["🛑 Veto Físico Imediato no SO"]
+        
+        HardBlock -.->|"Veto / Erro"| LoopAdapt["Loop de Auto-Adaptação (até 3x)"]
+        LoopAdapt --> Bash
+        LoopAdapt -->|"Teto de 3 Rejeições"| Escalation["🛑 Relatório Estruturado de Escalação Humana"]
+        Escalation --> User
+        
         PromptUser -->|"Aprovado pelo Usuário"| OSExec
         CacheRead --> OSExec
     end
     
-    Sudo -->|"Teto de 3 Rejeições Atingido"| Escalation["🛑 Relatório Estruturado de Escalação Humana"]
-    Escalation --> User
-    
-    subgraph Governance["📜 Metagovernança & Políticas"]
+    subgraph Governance["📜 Governança Constitucional"]
         User <-->|"Gestão Legislativa"| Policy["⚖️ @agente-sudo-policy<br/>(Gestor Constitucional)"]
-        Policy -.->|"Mediação: Revisão ou Kill Switch"| Sudo
-        Policy -->|"Escrita Segura Proposta-Primeiro"| PoliciesFile["policies.json v3.3<br/>chmod 444"]
-        MetaGuard{"👁️ @agente-meta<br/>(Guardião de Infraestrutura)"} -.->|"Proteção PreToolUse contra Mutações"| Gate
+        Policy -.->|"Mediação Constitucional"| Gate
+        Policy -->|"Escrita Segura Proposta-Primeiro"| PoliciesFile["policies.json v4.0<br/>chmod 444"]
     end
 ```
 
@@ -108,12 +105,11 @@ O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens an
 
 ## 👥 Matriz de Responsabilidades
 
-| Agente | Identidade | Nível de Acesso | Diretiva Primária |
+| Componente | Identidade | Nível de Acesso | Diretiva Primária |
 | :--- | :--- | :--- | :--- |
-| **`@agente-bash`** | **Operador de Terminal** | Leitura irrestrita do SO / Shell sem privilégios | Executa diagnósticos ágeis, compacta saídas na fonte e submete comandos de privilégio ao auditor via JSON estruturado. Mantém sessão contínua (*Modo Sticky*). |
-| **`@agente-sudo`** | **Auditor de Segurança** | Deliberação crítica em tempo de execução | Avalia requisições em modo *stateless* contra a Constituição. Aplica mitigação automática ou veto preventivo, fiscalizado pelo motor Python. |
-| **`@agente-sudo-policy`** | **Gestor Constitucional** | Monopólio legislativo exclusivo | Detém o monopólio exclusivo de legislar sobre as regras em `policies.json`, `meta_policies.json`, `AGENTS.md` e `hooks.json`. Segue o *Rito Proposta-Primeiro*. |
-| **`@agente-meta`** | **Guardião de Infraestrutura** | Proteção ativa de integridade | Opera via hook `PreToolUse` bloqueando alterações não autorizadas nos arquivos de governança e plugins. |
+| **`@agente-bash`** | **Operador de Terminal** (LLM) | Leitura irrestrita do SO / Shell sem privilégios | Executa diagnósticos ágeis, compacta saídas na fonte e conduz comandos no terminal. Mantém sessão contínua (*Modo Sticky*). |
+| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica fisicamente as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de privilégios (`force_ask`), auto-compressão e cache com TTL. |
+| **`@agente-sudo-policy`** | **Gestor Constitucional** (LLM) | Monopólio legislativo exclusivo | Detém o monopólio exclusivo de legislar sobre as regras em `policies.json`, `meta_policies.json`, `AGENTS.md` e `hooks.json`. Segue o *Rito Proposta-Primeiro*. |
 
 ---
 
@@ -159,14 +155,14 @@ As diretrizes do sistema residem em [`security/policies.json`](security/policies
 | :---: | :--- | :---: | :--- | :---: |
 | **`RULE-01`** | **Soberania do Display** | `CRITICAL` | Veto a alterações em `monitors.lua` ou resoluções sem prévia confirmação humana. | **Hook `force_ask`** |
 | **`RULE-02`** | **Anti-Destruição** | `CRITICAL` | Bloqueio de deleção recursiva indiscriminada na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, etc.). | **Hook `deny` sumário** |
-| **`RULE-03`** | **Operações de Disco** | `CRITICAL` | Comandos `mkfs`, `fdisk`, `dd` exigem alvo explícito e blindam partições ativas (`/`, `/boot`). | Auditoria Sudo |
-| **`RULE-04`** | **Escopo Estrito** | `HIGH` | O comando com privilégio deve ater-se exclusivamente à necessidade da tarefa solicitada. | Auditoria Sudo |
-| **`RULE-05`** | **Preservação de Permissões** | `HIGH` | Veto a permissões globais abusivas (`chmod -R 777` ou `chown -R` no sistema). | Auditoria Sudo |
+| **`RULE-03`** | **Operações de Disco** | `CRITICAL` | Comandos `mkfs`, `fdisk`, `dd` exigem alvo explícito e blindam partições ativas (`/`, `/boot`). | `governance-gate` |
+| **`RULE-04`** | **Escopo Estrito** | `HIGH` | O comando com privilégio deve ater-se exclusivamente à necessidade da tarefa solicitada. | `governance-gate` |
+| **`RULE-05`** | **Preservação de Permissões** | `HIGH` | Veto a permissões globais abusivas (`chmod -R 777` ou `chown -R` no sistema). | `governance-gate` |
 | **`RULE-06`** | **Sigilo de Credenciais** | `HIGH` | Enforce de `HISTFILE=/dev/null`. Descontinuação e veto permanente a runners com senhas locais. | **Hook `deny`** |
-| **`RULE-07`** | **Anti-Crash** | `HIGH` | Proibido matar processos que derrubem a sessão gráfica ativa (Hyprland, Wayland, SDDM, PID 1). | Auditoria Sudo |
+| **`RULE-07`** | **Anti-Crash** | `HIGH` | Proibido matar processos que derrubem a sessão gráfica ativa (Hyprland, Wayland, SDDM, PID 1). | `governance-gate` |
 | **`RULE-08`** | **Mitigação Ativa** | `MEDIUM` | Remodelação autônoma orientada pelo parecer técnico de veto sem transferir ruído ao usuário. | Loop Auto-Adaptação |
 | **`RULE-09`** | **Franquia de Diagnóstico** | `INFO` | Acesso instantâneo e livre para ler métricas, sensores, hardware e logs da máquina. | Execução Livre |
-| **`RULE-10`** | **Regra 3X (Teto de Recusas)** | `CRITICAL` | Limite de 3 rejeições consecutivas. Na 3ª recusa, suspensão imediata e alerta de escalação. | Sudo + Alerta |
+| **`RULE-10`** | **Regra 3X (Teto de Recusas)** | `CRITICAL` | Limite de 3 rejeições consecutivas. Na 3ª recusa, suspensão imediata e alerta de escalação. | Loop Auto-Adaptação (3X) |
 | **`RULE-11`** | **Monopólio Legislativo** | `CRITICAL` | Exclusividade legislativa do `@agente-sudo-policy`. Veto de escrita nos caminhos de governança. | **Hook `force_ask`** |
 | **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos mantidos em `chmod 444`, protegidos no runtime pelo hook `PreToolUse` (`governance-gate.py`). | **Hook PreToolUse** |
 | **`RULE-13`** | **Modo Sticky Automático** | `MANDATORY` | O `@agente-bash` assume a sessão contínua até saída explícita ou invocação de outro agente. | Sessão Contínua |
@@ -218,7 +214,7 @@ bash-sudo-agents/
 │       └── agente-sudo-policy/
 │           └── SKILL.md           # Diretivas e procedimentos do Gestor Constitucional
 └── 🔐 security/
-    ├── policies.json              # Políticas constitucionais ativas (v3.3)
+    ├── policies.json              # Políticas constitucionais ativas (v4.0)
     ├── meta_policies.json         # Políticas de autodefesa e metagovernança
     ├── agents_manifest.json       # Manifesto de integridade de agentes
     └── README.md                  # Guia de segurança e procedimentos de backup

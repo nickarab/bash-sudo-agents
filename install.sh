@@ -23,14 +23,14 @@ echo "[1/4] Criando diretórios de destino..."
 mkdir -p "$TARGET_PLUGIN_DIR/hooks" "$TARGET_SECURITY_DIR"
 
 echo "[2/4] Instalando plugin de agentes e motor Python..."
-chmod -R 644 "$TARGET_PLUGIN_DIR" 2>/dev/null || true
+chmod -R u+rwX "$TARGET_PLUGIN_DIR" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/plugin/"* "$TARGET_PLUGIN_DIR/"
 chmod 555 "$TARGET_PLUGIN_DIR/hooks/governance-gate.py" 2>/dev/null || true
 chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" 2>/dev/null || true
 
 echo "[3/4] Instalando políticas de segurança e metagovernança..."
-if [ -f "$TARGET_SECURITY_DIR/policies.json" ]; then
-    chmod 644 "$TARGET_SECURITY_DIR/policies.json" 2>/dev/null || true
+if [ -d "$TARGET_SECURITY_DIR" ]; then
+    chmod -R u+rwX "$TARGET_SECURITY_DIR" 2>/dev/null || true
 fi
 cp -r "$SCRIPT_DIR/security/"* "$TARGET_SECURITY_DIR/"
 

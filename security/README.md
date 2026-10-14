@@ -1,19 +1,18 @@
-# Sistema de Agentes Bash + Sudo
+# Sistema de Governança de Agentes de Terminal
 
-Este diretório contém as políticas e manifestos centrais do ecossistema de agentes:
+Este diretório contém as políticas e manifestos centrais do ecossistema de agentes (v4.0):
 
 ## Componentes
 
-1. **`policies.json` (v3.3)**:
-   - Políticas constitucionais ativas aplicadas na auditoria do `@agente-sudo` sobre o `@agente-bash`.
-   - Fiscalizadas fisicamente no runtime pelo hook `governance-gate.sh` (`PreToolUse`).
+1. **`policies.json` (v4.0)**:
+   - Políticas constitucionais ativas aplicadas fisicamente no runtime pelo motor Python `governance-gate.py` (`PreToolUse`) sobre o `@agente-bash`.
    - Gerenciado exclusivamente através do `@agente-sudo-policy`.
 
-2. **`meta_policies.json`**:
-   - Políticas de metagovernança para proteção da integridade dos próprios agentes.
+2. **`meta_policies.json` (v4.0)**:
+   - Políticas de metagovernança para proteção da integridade dos próprios arquivos de agentes e configurações.
 
-3. **`agents_manifest.json`**:
-   - Definições e papéis dos agentes (`@agente-bash`, `@agente-sudo`, `@agente-sudo-policy`).
+3. **`agents_manifest.json` (v4.0)**:
+   - Definições e papéis dos 3 pilares do sistema: `@agente-bash` (Operador LLM), `governance-gate.py` (Motor de Runtime) e `@agente-sudo-policy` (Gestor Constitucional LLM).
 
 ## Como Fazer Backup
 

@@ -26,7 +26,6 @@ echo "[2/4] Instalando plugin de agentes e motor Python..."
 chmod -R 644 "$TARGET_PLUGIN_DIR" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/plugin/"* "$TARGET_PLUGIN_DIR/"
 chmod 555 "$TARGET_PLUGIN_DIR/hooks/governance-gate.py" 2>/dev/null || true
-chmod 555 "$TARGET_PLUGIN_DIR/hooks/governance-gate.sh" 2>/dev/null || true
 chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" 2>/dev/null || true
 
 echo "[3/4] Instalando políticas de segurança e metagovernança..."

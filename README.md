@@ -1,24 +1,24 @@
 <div align="center">
 
 # 🛡️ Antigravity Linux Governance
-### *Agentes Autônomos de Terminal com Separação de Poderes, Auditoria Stateless e Blindagem PreToolUse no Runtime*
+### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.0)*
 
 [![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20Governance-blueviolet?style=for-the-badge&logo=diagramsdotnet)](https://github.com/nickarab/bash-sudo-agents)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Wayland%20%7C%20Hyprland-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/nickarab/bash-sudo-agents)
-[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v3.3-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
-[![Antigravity](https://img.shields.io/badge/Engine-Antigravity%202.0-blue?style=for-the-badge&logo=google)](https://github.com/nickarab/bash-sudo-agents)
-[![Guardrail](https://img.shields.io/badge/Runtime%20Gate-PreToolUse%20Hook-darkgreen?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
-[![Auditing](https://img.shields.io/badge/Guardrail-Regra%203X-critical?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
+[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.0-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
+[![Runtime Gate](https://img.shields.io/badge/Runtime%20Gate-Python%20PreToolUse-darkgreen?style=for-the-badge&logo=python)](https://github.com/nickarab/bash-sudo-agents)
+[![Optimizer](https://img.shields.io/badge/Tokens-Auto--Compressor%20%2B%20Cache-blue?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
+[![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Pip%20(Pure%20Stdlib)-orange?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
 
 <p align="center">
-  <b>Um framework agêntico de alto desempenho que transforma o terminal Linux em um ambiente autônomo, blindado e resiliente a falhas com proteção física no runtime.</b>
+  <b>Um framework agêntico de alto desempenho que transforma o terminal Linux em um ambiente autônomo, blindado no runtime e ultra-eficiente no consumo de tokens.</b>
 </p>
 
 [Instalação Rápida](#-instalação-express-em-nova-máquina) •
 [Arquitetura](#-arquitetura-do-sistema) •
+[Otimização de Tokens & Cache](#-otimização-de-tokens--cache-local) •
 [Agentes](#-matriz-de-responsabilidades) •
-[Contrato de Schemas](#-contrato-de-comunicação-entre-agentes) •
-[Constituição](#-mini-constituição-de-segurança-v33)
+[Constituição](#-mini-constituição-de-segurança-v40)
 
 ---
 
@@ -30,21 +30,21 @@
   <tr>
     <td width="50%">
       <h3>🛡️ Dupla Barreira & Separação de Poderes</h3>
-      O operador de terminal (<code>@agente-bash</code>) é proibido de executar comandos privilegiados diretamente. Toda elevação passa pela auditoria do <code>@agente-sudo</code> e é fisicamente fiscalizada no sistema pelo hook <code>governance-gate.py</code>.
+      O operador de terminal (<code>@agente-bash</code>) é proibido de executar comandos privilegiados diretamente. Toda elevação passa pela auditoria do <code>@agente-sudo</code> e é fisicamente fiscalizada no sistema pelo motor Python <code>governance-gate.py</code>.
     </td>
     <td width="50%">
-      <h3>⚡ Eficiência Máxima de Tokens</h3>
-      Filtragem obrigatória na fonte com pipes Linux (<code>head</code>, <code>tail</code>, <code>grep -Ei</code>). Redução drástica de ruído de logs e pruning ativo no contexto da IA.
+      <h3>⚡ Auto-Compressor Sintático de Tokens</h3>
+      Injeção inteligente de limitadores na fonte (<code>head</code>, <code>tail</code>, <code>--no-pager</code>) via <code>overwrite</code> nativo. Blindagem sintática que respeita redirecionamentos e pipes existentes da IA.
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>🔄 Loop Resiliente & Regra 3X</h3>
-      Em caso de veto, o bash remodela a abordagem de forma autônoma sem frustrar o usuário. Teto rígido de 3 recusas com congelamento imediato e escalação estruturada ao administrador.
+      <h3>💾 Cache Local com TTL</h3>
+      Comandos estáticos de diagnóstico (<code>lscpu</code>, <code>uname</code>, <code>lspci</code>) são cacheados localmente com TTL configurável, eliminando re-execuções e saídas duplicadas no histórico do chat.
     </td>
     <td width="50%">
-      <h3>🔒 Blindagem Física no Runtime (PreToolUse)</h3>
-      Veto sumário automático (<code>deny</code>) a comandos destrutivos (<code>rm -rf /</code>), contenção explícita de configurações de monitores (<code>monitors.lua</code>) e isolamento em <code>chmod 444</code>.
+      <h3>🔒 Zero-Pip & Failsafe Universal</h3>
+      Construído estritamente com a biblioteca padrão do Python 3.8+ (sem necessidade de <code>pip install</code> ou <code>jq</code>). Envelopamento global com <code>try/except</code> que impede travamentos da IDE.
     </td>
   </tr>
 </table>
@@ -65,11 +65,13 @@ flowchart TD
         Sudo -->|"Vetado"| LoopAdapt["Loop de Auto-Adaptação Autônoma"]
         LoopAdapt -->|"Nova Tentativa Segura (até 3)"| Sudo
         
-        RunCmd --> Gate{"🚧 governance-gate.py<br/>(Hook PreToolUse no SO)"}
-        Gate -->|"allow: seguro / diagnóstico"| OSExec["Execução no Linux"]
+        RunCmd --> Gate{"🚧 governance-gate.py<br/>(Motor Python PreToolUse)"}
+        Gate -->|"Cache Hit (TTL Válido)"| CacheRead["Leitura Instantânea de Cache"]
+        Gate -->|"allow: seguro / otimizado"| OSExec["Execução no Linux"]
         Gate -->|"force_ask: sudo / privilégios / monitores"| PromptUser["Card Nativo de Senha / Confirmação"]
         Gate -->|"deny: rm -rf raiz / destruição vital"| HardBlock["🛑 Veto Físico Imediato no SO"]
         PromptUser -->|"Aprovado pelo Usuário"| OSExec
+        CacheRead --> OSExec
     end
     
     Sudo -->|"Teto de 3 Rejeições Atingido"| Escalation["🛑 Relatório Estruturado de Escalação Humana"]
@@ -85,12 +87,31 @@ flowchart TD
 
 ---
 
+## ⚡ Otimização de Tokens & Cache Local
+
+O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens antes que qualquer texto seja gravado no histórico da sessão:
+
+### 1. Auto-Compressor na Fonte
+* **`journalctl`** ➔ Adiciona automaticamente `--no-pager -n 35`.
+* **`dmesg`** ➔ Adiciona automaticamente `--color=never | tail -n 35`.
+* **`git log`** ➔ Adiciona automaticamente `-n 15`.
+* **`pacman -Ss` / `yay -Ss`** ➔ Adiciona automaticamente `| head -n 25`.
+* **Blindagem Sintática:** Se a IA já tiver configurado redirecionamentos (`>`, `>>`) ou pipes (`|`), o compressor não interfere, garantindo integridade sintática.
+
+### 2. Cache com TTL (Time-To-Live)
+* **Local:** `~/.cache/antigravity/bash_agents/`
+* **Hardware/Distro Estático** (`lscpu`, `uname -a`, `lspci`, `lsusb`, `cat /etc/os-release`): TTL de **1 hora**.
+* **Buscas em Repositórios** (`pacman -Ss`, `yay -Ss`): TTL de **10 minutos**.
+* **Comandos Voláteis** (`git status`, `systemctl`, `ps`, testes): **TTL = 0** (nunca cacheados).
+
+---
+
 ## 👥 Matriz de Responsabilidades
 
 | Agente | Identidade | Nível de Acesso | Diretiva Primária |
 | :--- | :--- | :--- | :--- |
 | **`@agente-bash`** | **Operador de Terminal** | Leitura irrestrita do SO / Shell sem privilégios | Executa diagnósticos ágeis, compacta saídas na fonte e submete comandos de privilégio ao auditor via JSON estruturado. Mantém sessão contínua (*Modo Sticky*). |
-| **`@agente-sudo`** | **Auditor de Segurança** | Deliberação crítica em tempo de execução | Avalia requisições em modo *stateless* contra a Constituição. Aplica mitigação automática ou veto preventivo, fiscalizado pelo hook de runtime. |
+| **`@agente-sudo`** | **Auditor de Segurança** | Deliberação crítica em tempo de execução | Avalia requisições em modo *stateless* contra a Constituição. Aplica mitigação automática ou veto preventivo, fiscalizado pelo motor Python. |
 | **`@agente-sudo-policy`** | **Gestor Constitucional** | Monopólio legislativo exclusivo | Detém o monopólio exclusivo de legislar sobre as regras em `policies.json`, `meta_policies.json`, `AGENTS.md` e `hooks.json`. Segue o *Rito Proposta-Primeiro*. |
 | **`@agente-meta`** | **Guardião de Infraestrutura** | Proteção ativa de integridade | Opera via hook `PreToolUse` bloqueando alterações não autorizadas nos arquivos de governança e plugins. |
 
@@ -124,9 +145,9 @@ A comunicação interna entre o operador e o auditor de segurança segue o schem
 
 ---
 
-## ⚖️ Mini Constituição de Segurança (`v3.3`)
+## ⚖️ Mini Constituição de Segurança (`v4.0`)
 
-As diretrizes do sistema residem em [`security/policies.json`](security/policies.json) e são fiscalizadas ativamente em tempo de execução pelo hook `PreToolUse`:
+As diretrizes do sistema residem em [`security/policies.json`](security/policies.json) e são fiscalizadas ativamente em tempo de execução pelo motor Python `governance-gate.py`:
 
 <details open>
 <summary><b>🔍 Clique para expandir os 15 Artigos Constitucionais</b></summary>
@@ -156,7 +177,7 @@ As diretrizes do sistema residem em [`security/policies.json`](security/policies
 
 ## 🚀 Instalação Express em Nova Máquina
 
-Para replicar todo o ecossistema em qualquer máquina Linux em segundos:
+Para replicar todo o ecossistema em qualquer máquina Linux em segundos (requer apenas Python 3.8+ padrão, **zero pip**):
 
 ```bash
 # 1. Clonar o repositório
@@ -170,7 +191,7 @@ cd bash-sudo-agents
 ### O que o instalador faz automaticamente:
 * 📁 Cria as estruturas em `~/.gemini/config/plugins/bash-sudo-agents` e `~/.gemini/antigravity/scratch/security`.
 * 📦 Instala as Skills e as Regras Constitucionais (`AGENTS.md`).
-* 🚧 Instala e registra o hook `governance-gate.py` (`PreToolUse`) em `hooks.json` com `chmod 555`.
+* 🚧 Instala e registra o motor Python `governance-gate.py` (`PreToolUse`) em `hooks.json` com `chmod 555`.
 * 🔒 Aplica isolamento de leitura estrita (`chmod 444`) em todos os arquivos de governança.
 
 ---
@@ -180,13 +201,13 @@ cd bash-sudo-agents
 ```text
 bash-sudo-agents/
 ├── 📄 .gitignore                  # Proteção contra vazamento de arquivos locais
-├── ⚙️ install.sh                  # Instalador automatizado com checagem de ambiente
+├── ⚙️ install.sh                  # Instalador universal automatizado (Zero-Pip)
 ├── 📘 README.md                   # Esta documentação executiva
 ├── 🧩 plugin/
-│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v1.2.0)
-│   ├── hooks.json                 # Registro do hook de ciclo de vida PreToolUse
+│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v1.3.0)
+│   ├── hooks.json                 # Registro do hook chamando python3 ./hooks/governance-gate.py
 │   ├── hooks/
-│   │   └── governance-gate.py     # Barreira física de segurança no sistema operacional
+│   │   └── governance-gate.py     # 🌟 Motor Python: Segurança, Cache e Auto-Compressor
 │   ├── rules/
 │   │   └── AGENTS.md              # Mini Constituição injetada no prompt do sistema
 │   └── skills/
@@ -206,6 +227,6 @@ bash-sudo-agents/
 <div align="center">
 
 Desenvolvido para máxima segurança, produtividade e confiabilidade operacional no **Antigravity**.  
-*Zero credenciais em texto puro • Zero bypass de privilégios • 100% Autonomia auditada no runtime.*
+*Zero dependências externas • Zero vazamento de contexto • 100% Autonomia auditada no runtime.*
 
 </div>

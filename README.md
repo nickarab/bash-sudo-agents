@@ -55,37 +55,31 @@
 
 ```mermaid
 flowchart TD
-    User([👤 Usuário Administrador]) <-->|Comandos / Diagnósticos| Bash["🖥️ @agente-bash
-(Operador de Terminal)"]
+    User(["👤 Usuário Administrador"]) <-->|"Comandos e Diagnósticos"| Bash["🖥️ @agente-bash<br/>(Operador de Terminal)"]
     
     subgraph Sandbox["⚙️ Execução e Auditoria em Tempo Real"]
-        Bash -->|1. Leitura & Diagnóstico Livre| TermBash[Terminal Seguro: Pipes Limitadores]
-        Bash -->|2. Deliberação & Payload JSON| Sudo{"🛡️ @agente-sudo
-(Auditor Cognitivo)"}
+        Bash -->|"1. Leitura e Diagnóstico Livre"| TermBash["Terminal Seguro: Pipes Limitadores"]
+        Bash -->|"2. Deliberação e Payload JSON"| Sudo{"🛡️ @agente-sudo<br/>(Auditor Cognitivo)"}
         
-        Sudo -->|Aprovado / Mitigado| RunCmd[Disparo via run_command]
-        Sudo -->|Vetado| LoopAdapt[Loop de Auto-Adaptação Autônoma]
-        LoopAdapt -->|Nova Tentativa Segura (até 3)| Sudo
+        Sudo -->|"Aprovado ou Mitigado"| RunCmd["Disparo via run_command"]
+        Sudo -->|"Vetado"| LoopAdapt["Loop de Auto-Adaptação Autônoma"]
+        LoopAdapt -->|"Nova Tentativa Segura (até 3)"| Sudo
         
-        RunCmd --> Gate{"🚧 governance-gate.sh
-(Hook PreToolUse no SO)"}
-        Gate -->|allow: seguro / diagnóstico| OSExec[Execução no Linux]
-        Gate -->|force_ask: sudo / privilégios / monitores| PromptUser[Card Nativo de Senha / Confirmação]
-        Gate -->|deny: rm -rf raiz / destruição vital| HardBlock[🛑 Veto Físico Imediato no SO]
-        PromptUser -->|Aprovado pelo Usuário| OSExec
+        RunCmd --> Gate{"🚧 governance-gate.sh<br/>(Hook PreToolUse no SO)"}
+        Gate -->|"allow: seguro / diagnóstico"| OSExec["Execução no Linux"]
+        Gate -->|"force_ask: sudo / privilégios / monitores"| PromptUser["Card Nativo de Senha / Confirmação"]
+        Gate -->|"deny: rm -rf raiz / destruição vital"| HardBlock["🛑 Veto Físico Imediato no SO"]
+        PromptUser -->|"Aprovado pelo Usuário"| OSExec
     end
     
-    Sudo -->|Teto de 3 Rejeições Atingido| Escalation["🛑 Relatório Estruturado de Escalação Humana"]
+    Sudo -->|"Teto de 3 Rejeições Atingido"| Escalation["🛑 Relatório Estruturado de Escalação Humana"]
     Escalation --> User
     
     subgraph Governance["📜 Metagovernança & Políticas"]
-        User <-->|Gestão Legislativa| Policy["⚖️ @agente-sudo-policy
-(Gestor Constitucional)"]
-        Policy -.->|Mediação: Revisão ou Kill Switch| Sudo
-        Policy -->|Escrita Segura Proposta-Primeiro| PoliciesFile[policies.json v3.3
-chmod 444]
-        MetaGuard{"👁️ @agente-meta
-(Guardião de Infraestrutura)"} -.->|Proteção PreToolUse contra Mutações| Gate
+        User <-->|"Gestão Legislativa"| Policy["⚖️ @agente-sudo-policy<br/>(Gestor Constitucional)"]
+        Policy -.->|"Mediação: Revisão ou Kill Switch"| Sudo
+        Policy -->|"Escrita Segura Proposta-Primeiro"| PoliciesFile["policies.json v3.3<br/>chmod 444"]
+        MetaGuard{"👁️ @agente-meta<br/>(Guardião de Infraestrutura)"} -.->|"Proteção PreToolUse contra Mutações"| Gate
     end
 ```
 

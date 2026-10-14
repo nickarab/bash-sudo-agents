@@ -35,9 +35,10 @@ chmod 444 "$TARGET_PLUGIN_DIR/plugin.json" \
           "$TARGET_PLUGIN_DIR/skills/"*"/SKILL.md" \
           "$TARGET_SECURITY_DIR/policies.json" \
           "$TARGET_SECURITY_DIR/meta_policies.json" \
-          "$TARGET_SECURITY_DIR/agents_manifest.json" 2>/dev/null || true
+          "$TARGET_SECURITY_DIR/agents_manifest.json" \
+          "$TARGET_SECURITY_DIR/README.md" 2>/dev/null || true
 
 echo ""
-echo "Instalação v3.2 concluída com sucesso!"
+echo "Instalação v3.3 concluída com sucesso!"
 echo "Plugin:    $TARGET_PLUGIN_DIR"
 echo "Políticas: $TARGET_SECURITY_DIR"

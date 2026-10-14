@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./hooks/governance-gate.sh",
+            "command": "python3 ./hooks/governance-gate.py",
             "timeout": 5
           }
         ]

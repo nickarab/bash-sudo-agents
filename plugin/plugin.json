@@ -1,5 +1,5 @@
 {
   "name": "bash-sudo-agents",
-  "version": "1.2.0",
-  "description": "Sistema global de agentes: @agente_bash (operador de terminal) governado pelo @agente_sudo (auditor de segurança), gerido pelo @agente-sudo-policy e blindado por hooks PreToolUse no runtime (v3.3)."
+  "version": "1.3.0",
+  "description": "Sistema global de agentes: @agente_bash governado pelo @agente_sudo, gerido pelo @agente-sudo-policy e blindado por motor Python nativo no runtime (v4.0: segurança, auto-compressão e cache)."
 }

@@ -30,7 +30,7 @@
   <tr>
     <td width="50%">
       <h3>🛡️ Dupla Barreira & Separação de Poderes</h3>
-      O operador de terminal (<code>@agente-bash</code>) é proibido de executar comandos privilegiados diretamente. Toda elevação passa pela auditoria do <code>@agente-sudo</code> e é fisicamente fiscalizada no sistema pelo hook <code>governance-gate.sh</code>.
+      O operador de terminal (<code>@agente-bash</code>) é proibido de executar comandos privilegiados diretamente. Toda elevação passa pela auditoria do <code>@agente-sudo</code> e é fisicamente fiscalizada no sistema pelo hook <code>governance-gate.py</code>.
     </td>
     <td width="50%">
       <h3>⚡ Eficiência Máxima de Tokens</h3>
@@ -65,7 +65,7 @@ flowchart TD
         Sudo -->|"Vetado"| LoopAdapt["Loop de Auto-Adaptação Autônoma"]
         LoopAdapt -->|"Nova Tentativa Segura (até 3)"| Sudo
         
-        RunCmd --> Gate{"🚧 governance-gate.sh<br/>(Hook PreToolUse no SO)"}
+        RunCmd --> Gate{"🚧 governance-gate.py<br/>(Hook PreToolUse no SO)"}
         Gate -->|"allow: seguro / diagnóstico"| OSExec["Execução no Linux"]
         Gate -->|"force_ask: sudo / privilégios / monitores"| PromptUser["Card Nativo de Senha / Confirmação"]
         Gate -->|"deny: rm -rf raiz / destruição vital"| HardBlock["🛑 Veto Físico Imediato no SO"]
@@ -145,7 +145,7 @@ As diretrizes do sistema residem em [`security/policies.json`](security/policies
 | **`RULE-09`** | **Franquia de Diagnóstico** | `INFO` | Acesso instantâneo e livre para ler métricas, sensores, hardware e logs da máquina. | Execução Livre |
 | **`RULE-10`** | **Regra 3X (Teto de Recusas)** | `CRITICAL` | Limite de 3 rejeições consecutivas. Na 3ª recusa, suspensão imediata e alerta de escalação. | Sudo + Alerta |
 | **`RULE-11`** | **Monopólio Legislativo** | `CRITICAL` | Exclusividade legislativa do `@agente-sudo-policy`. Veto de escrita nos caminhos de governança. | **Hook `force_ask`** |
-| **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos mantidos em `chmod 444`, protegidos no runtime pelo hook `PreToolUse` (`governance-gate.sh`). | **Hook PreToolUse** |
+| **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos mantidos em `chmod 444`, protegidos no runtime pelo hook `PreToolUse` (`governance-gate.py`). | **Hook PreToolUse** |
 | **`RULE-13`** | **Modo Sticky Automático** | `MANDATORY` | O `@agente-bash` assume a sessão contínua até saída explícita ou invocação de outro agente. | Sessão Contínua |
 | **`RULE-14`** | **Rito Proposta-Primeiro** | `CRITICAL` | Propostas de regras geram apenas texto no chat; modificações em disco exigem autorização expressa. | **Hook + Política** |
 | **`RULE-15`** | **Taxonomia Privilegiada** | `HIGH` | Gatilhos obrigatórios de retenção: `sudo`, `doas`, `pkexec`, `su`, `yay/paru -S`, `mount`, etc. | **Hook `force_ask`** |
@@ -170,7 +170,7 @@ cd bash-sudo-agents
 ### O que o instalador faz automaticamente:
 * 📁 Cria as estruturas em `~/.gemini/config/plugins/bash-sudo-agents` e `~/.gemini/antigravity/scratch/security`.
 * 📦 Instala as Skills e as Regras Constitucionais (`AGENTS.md`).
-* 🚧 Instala e registra o hook `governance-gate.sh` (`PreToolUse`) em `hooks.json` com `chmod 555`.
+* 🚧 Instala e registra o hook `governance-gate.py` (`PreToolUse`) em `hooks.json` com `chmod 555`.
 * 🔒 Aplica isolamento de leitura estrita (`chmod 444`) em todos os arquivos de governança.
 
 ---
@@ -186,7 +186,7 @@ bash-sudo-agents/
 │   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v1.2.0)
 │   ├── hooks.json                 # Registro do hook de ciclo de vida PreToolUse
 │   ├── hooks/
-│   │   └── governance-gate.sh     # Barreira física de segurança no sistema operacional
+│   │   └── governance-gate.py     # Barreira física de segurança no sistema operacional
 │   ├── rules/
 │   │   └── AGENTS.md              # Mini Constituição injetada no prompt do sistema
 │   └── skills/

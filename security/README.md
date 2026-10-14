@@ -4,8 +4,9 @@ Este diretório contém as políticas e manifestos centrais do ecossistema de ag
 
 ## Componentes
 
-1. **`policies.json` (v3.2)**:
+1. **`policies.json` (v3.3)**:
    - Políticas constitucionais ativas aplicadas na auditoria do `@agente-sudo` sobre o `@agente-bash`.
+   - Fiscalizadas fisicamente no runtime pelo hook `governance-gate.sh` (`PreToolUse`).
    - Gerenciado exclusivamente através do `@agente-sudo-policy`.
 
 2. **`meta_policies.json`**:

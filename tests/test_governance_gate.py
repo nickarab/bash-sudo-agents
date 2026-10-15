@@ -102,6 +102,46 @@ def call_audit_command(parsed, target_path, cwd):
     return gg.audit_command(parsed, target_path, Path(cwd))
 
 
+def run_gate_payload(payload: dict, env: dict | None = None) -> dict:
+    """Executa governance-gate.py com um payload arbitrário no stdin."""
+    script = PLUGIN_HOOKS_DIR / "governance-gate.py"
+    full_env = dict(os.environ)
+    if env:
+        full_env.update(env)
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=full_env,
+    )
+    try:
+        return json.loads(result.stdout.strip())
+    except json.JSONDecodeError:
+        return {"decision": "ERROR", "stdout": result.stdout, "stderr": result.stderr}
+
+
+def run_gate_raw(stdin_text: str, env: dict | None = None) -> dict:
+    """Executa governance-gate.py com texto bruto no stdin (payloads malformados)."""
+    script = PLUGIN_HOOKS_DIR / "governance-gate.py"
+    full_env = dict(os.environ)
+    if env:
+        full_env.update(env)
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input=stdin_text,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=full_env,
+    )
+    try:
+        return json.loads(result.stdout.strip())
+    except json.JSONDecodeError:
+        return {"decision": "ERROR", "stdout": result.stdout, "stderr": result.stderr}
+
+
 # ---------------------------------------------------------------------------
 # 1. Command injection no wrapper de cache (Quick Win #1)
 # ---------------------------------------------------------------------------
@@ -628,3 +668,186 @@ class TestSudoRunnerRule:
             gg.parse_command("bash /opt/sudo_runner.sh"), None, Path("/home/user")
         )
         assert decision == "deny"
+
+
+# ---------------------------------------------------------------------------
+# 14. Endurecimento RULE-02 (v4.3.0): -R/--recursive, globs, find -exec, vitais
+# ---------------------------------------------------------------------------
+
+class TestDestructiveHardening:
+    """Casos de regressão para os bypasses fechados em v4.3.0."""
+
+    def test_rm_capital_R_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -Rf /"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_recursive_long_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm --recursive /etc"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_glob_question_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -rf /e?c"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_glob_bracket_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -rf /e[t]c"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_glob_brace_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -rf /{etc,usr}"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_home_glob_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -rf /h?me"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_find_exec_rm_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("find / -type f -exec rm {} \\;"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_find_execdir_rm_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("find / -execdir rm -rf {} \\;"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_find_ok_rm_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("find / -ok rm {} \\;"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_vital_file_no_recursive_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm /etc/passwd"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_shadow_no_recursive_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm /etc/shadow"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_fstab_no_recursive_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm /etc/fstab"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_echo_dollar_path_allowed(self):
+        decision, _, _ = call_audit_command(gg.parse_command("echo $PATH"), None, Path("/home/user"))
+        assert decision == "allow"
+
+    def test_shred_user_file_allowed(self):
+        decision, _, _ = call_audit_command(gg.parse_command("shred -u ~/notes.txt"), None, Path("/home/user"))
+        assert decision == "allow"
+
+    def test_shred_dev_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("shred /dev/sda"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_rm_user_subdir_still_allowed(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -rf /home/user/Downloads/old"), None, Path("/home/user"))
+        assert decision == "allow"
+
+
+# ---------------------------------------------------------------------------
+# 15. RULE-15: yay/paru -Ss (busca pura) não é privilégio (v4.3.0)
+# ---------------------------------------------------------------------------
+
+class TestPackageSearchNotPrivileged:
+    def test_yay_Ss_not_privileged(self):
+        parsed = gg.parse_command("yay -Ss firefox")
+        assert parsed.sudo_like is False
+
+    def test_paru_Ss_not_privileged(self):
+        parsed = gg.parse_command("paru -Ss firefox")
+        assert parsed.sudo_like is False
+
+    def test_yay_Ss_allowed(self):
+        decision, _, _ = call_audit_command(gg.parse_command("yay -Ss firefox"), None, Path("/home/user"))
+        assert decision == "allow"
+
+
+# ---------------------------------------------------------------------------
+# 16. Cache: cat estático (v4.3.0)
+# ---------------------------------------------------------------------------
+
+class TestStaticCatCache:
+    def test_cat_os_release_cacheable(self):
+        assert gg._is_cacheable("cat /etc/os-release")
+
+    def test_cat_cpuinfo_cacheable(self):
+        assert gg._is_cacheable("cat /proc/cpuinfo")
+
+    def test_cat_passwd_not_cacheable(self):
+        assert not gg._is_cacheable("cat /etc/passwd")
+
+    def test_cat_shadow_not_cacheable(self):
+        assert not gg._is_cacheable("cat /etc/shadow")
+
+    def test_cat_multiple_files_not_cacheable(self):
+        assert not gg._is_cacheable("cat /etc/os-release /proc/cpuinfo")
+
+
+# ---------------------------------------------------------------------------
+# 17. RULE-10: chave de rejeição contextual + force_ask não incrementa (v4.3.0)
+# ---------------------------------------------------------------------------
+
+class TestRejectionKey:
+    def test_whitespace_variation_same_key(self):
+        now = 1_700_000_000.0
+        k1 = gg._rejection_key("rm -rf /", "/home/user", now=now)
+        k2 = gg._rejection_key("rm  -rf  /", "/home/user", now=now)
+        assert k1 == k2
+
+    def test_different_time_bucket_different_key(self):
+        now = 1_700_000_000.0
+        k1 = gg._rejection_key("rm -rf /", "/home/user", now=now)
+        k2 = gg._rejection_key("rm -rf /", "/home/user", now=now + 3600)
+        assert k1 != k2
+
+    def test_force_ask_does_not_increment(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate("sudo apt update", cwd=str(tmp_home))
+        assert result.get("decision") == "force_ask"
+        state_file = tmp_home / ".cache" / "antigravity" / "bash_agents" / "rejection_state.json"
+        assert not state_file.exists() or json.loads(state_file.read_text()) == {}
+
+    def test_deny_does_increment(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate("rm -rf /", cwd=str(tmp_home))
+        assert result.get("decision") == "deny"
+        state_file = tmp_home / ".cache" / "antigravity" / "bash_agents" / "rejection_state.json"
+        assert state_file.exists()
+        assert json.loads(state_file.read_text()) != {}
+
+
+# ---------------------------------------------------------------------------
+# 18. HMAC: sem fallback estático (v4.3.0)
+# ---------------------------------------------------------------------------
+
+class TestHMACHardening:
+    def test_no_static_fallback_secret(self, tmp_home, monkeypatch):
+        fake = tmp_home / "not_a_dir"
+        fake.write_text("x")  # arquivo no lugar do diretório força falha de mkdir
+        monkeypatch.setattr(gg, "CACHE_DIR", fake)
+        monkeypatch.setattr(gg, "HMAC_SECRET_FILE", fake / ".hmac_secret")
+        secret = gg._load_or_create_hmac_secret()
+        assert isinstance(secret, bytes)
+        assert len(secret) == 32
+        assert secret != b"default-secret-change-me"
+
+
+# ---------------------------------------------------------------------------
+# 19. Contrato de cwd e failsafe (v4.3.0)
+# ---------------------------------------------------------------------------
+
+class TestCwdContractAndFailsafe:
+    def test_top_level_cwd_honored(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        # cwd no topo (contrato documentado no README), sem Cwd em toolCall.args.
+        # Se o gate ignorasse o cwd de topo, cairia no HOME (tmp) e permitiria;
+        # lendo o cwd de topo, `../` resolve para /home e é vetado.
+        payload = {
+            "toolCall": {"name": "run_command", "args": {"CommandLine": "rm -rf ../"}},
+            "cwd": "/home/user",
+        }
+        result = run_gate_payload(payload)
+        assert result.get("decision") == "deny"
+
+    def test_malformed_payload_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate_raw("not-json{")
+        assert result.get("decision") == "force_ask"

@@ -87,6 +87,46 @@ def main():
         results += [r.get("decision") == "allow" and "tee" not in ow.get("CommandLine", "")]
         print(f"[{'PASS' if results[-1] else 'FAIL'}] cat /etc/passwd não é cacheado")
 
+        # --- Novos casos de regressão (v4.3.0) — RULE-02 hardening ---
+        results += [check("rm -Rf /", "rm -Rf /", "deny")]
+        results += [check("rm --recursive /etc", "rm --recursive /etc", "deny")]
+        results += [check("rm -rf /e?c", "rm -rf /e?c", "deny")]
+        results += [check("rm -rf /e[t]c", "rm -rf /e[t]c", "deny")]
+        results += [check("rm -rf /{etc,usr}", "rm -rf /{etc,usr}", "deny")]
+        results += [check("find / -type f -exec rm {} \\;", "find / -type f -exec rm {} \\;", "deny")]
+        results += [check("find / -execdir rm -rf {} \\;", "find / -execdir rm -rf {} \\;", "deny")]
+        results += [check("find / -ok rm {} \\;", "find / -ok rm {} \\;", "deny")]
+        results += [check("rm /etc/passwd", "rm /etc/passwd", "deny")]
+        results += [check("rm /etc/shadow", "rm /etc/shadow", "deny")]
+        results += [check("rm /etc/fstab", "rm /etc/fstab", "deny")]
+        results += [check("echo $PATH", "echo $PATH", "allow")]
+        results += [check("shred -u ~/notes.txt", "shred -u ~/notes.txt", "allow")]
+        results += [check("shred /dev/sda", "shred /dev/sda", "deny")]
+        # RULE-15: busca pura yay/paru -Ss deve fluir como allow
+        results += [check("yay -Ss firefox", "yay -Ss firefox", "allow")]
+        results += [check("paru -Ss firefox", "paru -Ss firefox", "allow")]
+        # cat estático é cacheado (reintegração), sensível não
+        r = run_gate("cat /etc/os-release")
+        ow = r.get("overwrite", {})
+        results += [r.get("decision") == "allow" and "tee" in ow.get("CommandLine", "")]
+        print(f"[{'PASS' if results[-1] else 'FAIL'}] cat /etc/os-release é cacheado (tee)")
+        r = run_gate("cat /proc/cpuinfo")
+        ow = r.get("overwrite", {})
+        results += [r.get("decision") == "allow" and "tee" in ow.get("CommandLine", "")]
+        print(f"[{'PASS' if results[-1] else 'FAIL'}] cat /proc/cpuinfo é cacheado (tee)")
+        # Failsafe: payload malformado → force_ask (não allow)
+        _bad = subprocess.run(
+            [sys.executable, str(GATE)],
+            input="not-json{", capture_output=True, text=True, timeout=10,
+            env=dict(os.environ),
+        )
+        try:
+            _failsafe_ok = json.loads(_bad.stdout.strip()).get("decision") == "force_ask"
+        except Exception:
+            _failsafe_ok = False
+        results += [_failsafe_ok]
+        print(f"[{'PASS' if _failsafe_ok else 'FAIL'}] payload malformado → force_ask")
+
         # --- RULE-06: sudo_runner (deny) ---
         results += [check("./sudo_runner.sh", "./sudo_runner.sh", "deny")]
         results += [check("bash /opt/sudo_runner.sh", "bash /opt/sudo_runner.sh", "deny")]

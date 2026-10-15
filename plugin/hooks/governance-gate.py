@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-governance-gate.py — Antigravity Linux Governance Engine (v4.1)
+governance-gate.py — Antigravity Linux Governance Engine (v4.3.0)
 Arquitetura do Sistema:
   - @agente-bash: Operador de Terminal (LLM)
   - governance-gate.py: Motor de Governança, Firewall, Cache e Compressor físico no SO (Runtime Hook)
@@ -18,6 +18,7 @@ Recursos:
 Zero dependências externas (estritamente Python 3.8+ Standard Library).
 """
 
+import fnmatch
 import sys
 import json
 import os
@@ -44,6 +45,7 @@ REJECTION_STATE_FILE = CACHE_DIR / "rejection_state.json"
 HMAC_SECRET_FILE = CACHE_DIR / ".hmac_secret"
 REJECTION_TTL_SECONDS = 86400  # 24 horas
 REJECTION_LIMIT = 3
+REJECTION_WINDOW_SECONDS = 3600  # 1 hora — janela de sessão/tempo para a Regra 3X
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +98,15 @@ def audit_log(decision: str, reason: str, rule: str | None, cmd: str,
         pass  # Nunca falhar o gate por causa de logging
 
 
+def _escalation_reason(reason: str, cwd: str) -> str:
+    """Monta a notificação de escalação 3X no campo `reason` (respeita o contrato de saída)."""
+    return (
+        "🛑 [ALERTA DE SEGURANÇA: LIMITE DE RECUSAS ATINGIDO (3/3)] "
+        f"{reason} — Contexto: {cwd}. "
+        "EXECUÇÃO SUSPENSA. Aguardando intervenção manual do administrador."
+    )
+
+
 # ---------------------------------------------------------------------------
 # HMAC para assinatura de cache (Seção 5.4)
 # ---------------------------------------------------------------------------
@@ -112,7 +123,8 @@ def _load_or_create_hmac_secret() -> bytes:
         os.chmod(HMAC_SECRET_FILE, 0o600)
         return secret
     except Exception:
-        return b"default-secret-change-me"
+        # Sem fallback estático: em falha de I/O, gera segredo efêmero em memória.
+        return os.urandom(32)
 
 
 def _sign_cache_entry(payload: dict, secret: bytes) -> str:
@@ -164,6 +176,20 @@ def _increment_rejection(key: str) -> int:
 def _get_rejection_count(key: str) -> int:
     state = _load_rejection_state()
     return state.get(key, {}).get("count", 0)
+
+
+def _rejection_key(cmd: str, cwd: str, now: float | None = None) -> str:
+    """Chave de rejeição contextual (sessão/tempo), resistente a variações triviais.
+
+    - Normaliza espaços em branco do comando, para que variações triviais de
+      espaçamento no mesmo comando perigoso não zerem o contador.
+    - Agrega um bucket temporal (1h) como proxy de sessão, expirando naturalmente.
+    """
+    now = now if now is not None else time.time()
+    bucket = int(now // REJECTION_WINDOW_SECONDS)
+    norm = re.sub(r"\s+", " ", (cmd or "").strip())
+    h = hashlib.sha256(f"{cwd}:{norm}".encode("utf-8")).hexdigest()[:16]
+    return f"{bucket}:{h}"
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +398,20 @@ def _unwrap_privilege_prefix(argv: list[str]) -> list[str]:
 # raiz do home (~) é considerada vital, não subdiretórios arbitrários do usuário.
 VITAL_TOP_DIRS = {"boot", "etc", "usr", "var", "sys", "proc", "dev", "bin", "sbin", "lib", "lib64"}
 
+# Arquivos vitais específicos: deletá-los é sempre destrutivo, mesmo sem a flag
+# recursiva (RULE-02). A raiz do home também é protegida por "home" em _is_vital_path.
+VITAL_FILES = {
+    "/etc/passwd", "/etc/shadow", "/etc/gshadow", "/etc/group",
+    "/etc/fstab", "/etc/crypttab", "/etc/sudoers", "/etc/sudoers.d",
+    "/etc/hostname", "/etc/hosts", "/etc/resolv.conf",
+    "/boot/grub/grub.cfg", "/boot/grub2/grub.cfg",
+    "/etc/ssh/sshd_config", "/etc/ssh/ssh_config",
+}
+
+# Para casamento de globs na primeira componente, "home" também é tratado como
+# vital (a raiz de um home é protegida), evitando bypass tipo /h?me.
+_VITAL_GLOB_TARGETS = frozenset(VITAL_TOP_DIRS | {"home"})
+
 
 def _normalize_path(arg: str, cwd: Path) -> str:
     """Expande ~, torna absoluto relativo ao cwd e normaliza .. (sem exigir existência)."""
@@ -381,6 +421,28 @@ def _normalize_path(arg: str, cwd: Path) -> str:
     return os.path.normpath(str(p))
 
 
+def _has_glob(arg: str) -> bool:
+    """True se o argumento contém metacaracteres de glob do shell (? [] {} *)."""
+    return any(ch in arg for ch in "?[]{}*")
+
+
+def _path_component_matches_vital(comp: str) -> bool:
+    """
+    True se a primeira componente do caminho (podendo conter globs) pode casar
+    com um diretório vital. Cobre ? [] * via fnmatch e {} via expansão de chaves.
+    """
+    alts = [comp]
+    m = re.match(r'^([^{}]*)\{([^{}]*)\}(.*)$', comp)
+    if m:
+        prefix, body, suffix = m.groups()
+        alts = [prefix + part + suffix for part in body.split(",")]
+    for alt in alts:
+        for vital in _VITAL_GLOB_TARGETS:
+            if fnmatch.fnmatch(vital, alt):
+                return True
+    return False
+
+
 def _is_vital_path(arg: str) -> bool:
     """True se o caminho (já normalizado) aponta para a raiz ou um diretório vital."""
     if arg in {"/", "/*"}:
@@ -388,7 +450,8 @@ def _is_vital_path(arg: str) -> bool:
     if arg.startswith("/"):
         rest = arg.lstrip("/")
         top = rest.split("/", 1)[0]
-        top = top.split("*", 1)[0]
+        if _has_glob(top):
+            return _path_component_matches_vital(top)
         if top in VITAL_TOP_DIRS:
             return True
         # /home exatamente ou /home/<usuario> (raiz de um home) é vital;
@@ -401,14 +464,80 @@ def _is_vital_path(arg: str) -> bool:
     return False
 
 
+def _is_recursive_flag(a: str) -> bool:
+    """True para flags recursivas de rm: -r, -R, --recursive e combinações (-rf, -fr, -Rf...)."""
+    if a == "--recursive":
+        return True
+    if a.startswith("-") and not a.startswith("--"):
+        return "r" in a or "R" in a
+    return False
+
+
+def _rm_is_destructive(args: list[str], cwd: Path) -> bool:
+    """rm é destrutivo quando o alvo aponta para caminho/arquivo vital."""
+    targets = [a for a in args if not a.startswith("-")]
+    if not targets:
+        return False
+    # Variável não resolvida (pré-bash) em alvo de rm: conservador, veta.
+    if any("$" in a for a in targets):
+        return True
+    recursive = any(_is_recursive_flag(a) for a in args)
+    for a in targets:
+        norm = _normalize_path(a, cwd)
+        # Arquivo vital específico é vetado mesmo sem recursão.
+        if norm in VITAL_FILES:
+            return True
+        # Recursivo: qualquer subárvore de diretório vital é vetada.
+        if recursive and _is_vital_path(norm):
+            return True
+    return False
+
+
+def _find_is_destructive(args: list[str]) -> bool:
+    """find é destrutivo com -delete ou com -exec/-execdir/-ok rodando rm/dd/shred."""
+    for i, a in enumerate(args):
+        if a == "-delete" or a.startswith("-delete"):
+            return True
+        if a in {"-exec", "-execdir", "-ok"}:
+            if i + 1 < len(args):
+                inner = args[i + 1].split("/")[-1]
+                if inner in {"rm", "shred", "dd"}:
+                    return True
+    return False
+
+
+def _shred_is_destructive(args: list[str], cwd: Path) -> bool:
+    """shred só é vetado para dispositivos de bloco (/dev/*) ou caminhos vitais."""
+    targets = [a for a in args if not a.startswith("-")]
+    if not targets:
+        return False
+    if any("$" in a for a in targets):
+        return True
+    for a in targets:
+        norm = _normalize_path(a, cwd)
+        if norm.startswith("/dev/") or a.startswith("/dev/"):
+            return True
+        if _is_vital_path(norm):
+            return True
+    return False
+
+
+def _dd_is_destructive(args: list[str]) -> bool:
+    """dd é destrutivo quando grava (of=) em dispositivo de bloco."""
+    for a in args:
+        if a.startswith("of=/dev/"):
+            return True
+    return False
+
+
 def _detect_destructive(cmd: str, cwd: Path) -> str | None:
     """
     Detecção semântica de comandos destrutivos (RULE-02).
     Divide a linha em comandos, remove prefixos de privilégio e verifica o
     binário alvo e seus argumentos. Retorna o binário destrutivo ou None.
-    Caminhos são normalizados (expandido ~, absoluto vs cwd, .. resolvido)
-    antes da checagem de diretório vital. Variáveis de ambiente não resolvidas
-    ($) em argumentos destrutivos são vetadas, pois o gate roda pré-bash.
+    A checagem de variáveis não resolvidas ($) é aplicada apenas a comandos
+    destrutivos confirmados (rm/find/shred/dd), nunca a comandos inofensivos
+    como `echo $PATH`.
     """
     for seg in _shell_split_commands(cmd):
         argv = _unwrap_privilege_prefix(_safe_split(seg))
@@ -416,25 +545,18 @@ def _detect_destructive(cmd: str, cwd: Path) -> str | None:
             continue
         binary = argv[0]
         args = argv[1:]
-        # Bloquear destrutivo com variável de ambiente não resolvida (pré-bash)
-        if any("$" in a for a in args if not a.startswith("-")):
-            return binary
         if binary == "rm":
-            if any(a.startswith("-") and "r" in a for a in args):
-                for a in args:
-                    if a.startswith("-"):
-                        continue
-                    if _is_vital_path(_normalize_path(a, cwd)):
-                        return "rm"
+            if _rm_is_destructive(args, cwd):
+                return "rm"
         elif binary == "find":
-            if any(a == "-delete" or a.startswith("-delete") for a in args):
+            if _find_is_destructive(args):
                 return "find"
         elif binary == "shred":
-            return "shred"
+            if _shred_is_destructive(args, cwd):
+                return "shred"
         elif binary == "dd":
-            for a in args:
-                if a.startswith("of=/dev/") or a == "of=/dev/sda":
-                    return "dd"
+            if _dd_is_destructive(args):
+                return "dd"
     return None
 
 
@@ -443,6 +565,10 @@ def _detect_destructive(cmd: str, cwd: Path) -> str | None:
 # ---------------------------------------------------------------------------
 
 CACHEABLE_BINS = {"lscpu", "uname", "lspci", "lsusb", "pacman", "yay", "paru"}
+
+# Arquivos estáticos permitidos para cache via `cat` (sem reabrir brechas para
+# arquivos sensíveis como /etc/passwd ou /etc/shadow).
+STATIC_CAT_PATHS = {"/etc/os-release", "/proc/cpuinfo"}
 
 DANGEROUS_ARGS = {
     "-exec", "-delete", "-ok", "-execdir",
@@ -459,13 +585,16 @@ def _is_cacheable(cmd: str) -> bool:
         return False
     if not argv:
         return False
-    if argv[0] not in CACHEABLE_BINS:
-        return False
-    # Rejeitar argumentos perigosos
-    for arg in argv[1:]:
-        if arg in DANGEROUS_ARGS:
-            return False
-    return True
+    if argv[0] in CACHEABLE_BINS:
+        # Rejeitar argumentos perigosos
+        for arg in argv[1:]:
+            if arg in DANGEROUS_ARGS:
+                return False
+        return True
+    # cat de arquivos estáticos permitidos (somente esses caminhos exatos)
+    if argv[0] == "cat" and len(argv) == 2 and argv[1] in STATIC_CAT_PATHS:
+        return True
+    return False
 
 
 def safe_cache_wrap(cmd: str, cache_file: Path) -> str:
@@ -533,8 +662,8 @@ DESTRUCTIVE_PATTERN = re.compile(
     _BOUNDARY +
     r'(?:'
     rf'rm\s+-[a-zA-Z]*r[a-zA-Z]*f?\s+(?:/\*|/(?:{_VITAL_ALT})\b(?:/.*)?|/{_END}|~(?:(?:{_END})|/{_END})|\.\./?(?:{_END}))'
-    r'|find\s+[^;&|\n]*\s+-delete'
-    r'|shred\b'
+    r'|find\s+[^;&|\n]*\s+(?:-delete|-(?:exec|execdir|ok)\s+rm\b)'
+    rf'|shred\b[^;&|\n]*(?:/dev/|/(?:{_VITAL_ALT})\b)'
     r'|dd\s+[^;&|\n]*\bof=/dev/'
     r')'
 )
@@ -568,7 +697,7 @@ MONITOR_PATTERN = re.compile(r'monitors\.lua|hyprland/.*monitors?\.conf')
 PRIV_PATTERN = re.compile(
     r'(^|[;&|(`\s])(sudo|doas|pkexec|su|run0)(\s|$)'
     r'|(^|[;&|`\s])sudo\s+(-u|-i|--user|--login)\s+'
-    r'|(^|[;&|`\s])(yay|paru)\s+-S'
+    r'|(^|[;&|`\s])(yay|paru)\s+-S(?:\s|$)'
     r'|(^|[;&|`\s])systemctl\s+(start|stop|restart|enable|disable|mask|unmask)\s+(?!.*--user)'
     r'|\$\([^)]*(?:sudo|doas|pkexec|su|run0)[^)]*\)'
     r'|`[^`]*(?:sudo|doas|pkexec|su|run0)[^`]*`'
@@ -676,12 +805,20 @@ def audit_and_optimize() -> None:
             out("allow", "")
         data = json.loads(raw_input)
     except Exception as e:
-        out("allow", f"Failsafe: payload inválido ({str(e)})")
+        out("force_ask", f"Failsafe: payload malformado ({str(e)}) — confirmação humana exigida.")
 
-    args = data.get("toolCall", {}).get("args", {})
-    cmd = args.get("CommandLine", args.get("command", "")).strip()
-    target_raw = args.get("TargetFile", args.get("file_path", "")).strip()
-    cwd_str = args.get("Cwd", args.get("cwd", str(HOME)))
+    tool_call = data.get("toolCall", {})
+    if not isinstance(tool_call, dict):
+        tool_call = {}
+    args = tool_call.get("args", {})
+    if not isinstance(args, dict):
+        args = {}
+
+    cmd = (args.get("CommandLine") or args.get("command") or data.get("command") or "").strip()
+    target_raw = (args.get("TargetFile") or args.get("file_path")
+                  or data.get("target") or data.get("file_path") or "").strip()
+    # Contrato de cwd: aceita data.cwd (topo) e toolCall.args.Cwd / cwd.
+    cwd_str = (data.get("cwd") or args.get("Cwd") or args.get("cwd") or str(HOME))
     cwd = Path(cwd_str)
 
     cmd_hash = hashlib.sha256(f"{cwd_str}:{cmd}".encode("utf-8")).hexdigest()[:16]
@@ -696,8 +833,8 @@ def audit_and_optimize() -> None:
     # Parser semântico (Seções 5.1 e 8.3)
     parsed = parse_command(cmd)
 
-    # Chave de rejeição baseada em usuário + sessão (cwd como proxy)
-    rejection_key = f"{cwd_str}:{cmd_hash}"
+    # Chave de rejeição contextual (sessão/tempo), resistente a variações triviais
+    rejection_key = _rejection_key(cmd, cwd_str)
 
     # =========================================================================
     # 1. AUDITORIA CONSTITUCIONAL
@@ -705,27 +842,19 @@ def audit_and_optimize() -> None:
     decision, reason, overwrite = audit_command(parsed, target_path, cwd, target_raw)
 
     if decision == "deny":
-        # RULE-10: Incrementar contador de rejeições
+        # RULE-10: incrementa o contador apenas para vetos (deny), nunca para
+        # confirmações legítimas (force_ask).
         count = _increment_rejection(rejection_key)
         latency_ms = _now_ms() - start_ms
         audit_log(decision, reason, "RULE-02/05/06/07", cmd, cwd_str, latency_ms)
         if count >= REJECTION_LIMIT:
-            out(decision, reason, rule="RULE-10", cmd_hash=env_hash,
-                latency_ms=latency_ms,
-                overwrite={"decision": "ESCALATE_3X",
-                           "reason": f"Limite de 3 rejeições atingido para {cwd_str}"})
-        out(decision, reason, rule="RULE-02/05/06/07", cmd_hash=env_hash, latency_ms=latency_ms)
+            out("deny", _escalation_reason(reason, cwd_str))
+        out("deny", reason)
 
     if decision == "force_ask":
-        count = _increment_rejection(rejection_key)
         latency_ms = _now_ms() - start_ms
         audit_log(decision, reason, "RULE-01/03/12/15", cmd, cwd_str, latency_ms)
-        if count >= REJECTION_LIMIT:
-            out(decision, reason, rule="RULE-10", cmd_hash=env_hash,
-                latency_ms=latency_ms,
-                overwrite={"decision": "ESCALATE_3X",
-                           "reason": f"Limite de 3 rejeições atingido para {cwd_str}"})
-        out(decision, reason, rule="RULE-01/03/12/15", cmd_hash=env_hash, latency_ms=latency_ms)
+        out("force_ask", reason)
 
     if not cmd:
         out("allow", "", cmd_hash=env_hash, latency_ms=_now_ms() - start_ms)
@@ -829,7 +958,7 @@ def main() -> None:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Failsafe: {str(e)}\n")
         except Exception:
             pass
-        out("allow", f"Failsafe: {str(e)}")
+        out("force_ask", f"Failsafe: erro interno ({str(e)}) — confirmação humana exigida.")
 
 
 if __name__ == "__main__":

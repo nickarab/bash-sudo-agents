@@ -1,13 +1,14 @@
 <div align="center">
 
 # 🛡️ Antigravity Linux Governance
-### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.0)*
+### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.1)*
 
 [![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20Governance-blueviolet?style=for-the-badge&logo=diagramsdotnet)](https://github.com/nickarab/bash-sudo-agents)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Wayland%20%7C%20Hyprland-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/nickarab/bash-sudo-agents)
-[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.0-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
+[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.1-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
 [![Runtime Gate](https://img.shields.io/badge/Runtime%20Gate-Python%20PreToolUse-darkgreen?style=for-the-badge&logo=python)](https://github.com/nickarab/bash-sudo-agents)
 [![Optimizer](https://img.shields.io/badge/Tokens-Auto--Compressor%20%2B%20Cache-blue?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
+[![Tests](https://img.shields.io/badge/Tests-101%2F101%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
 [![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Pip%20(Pure%20Stdlib)-orange?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
 
 <p align="center">
@@ -188,9 +189,24 @@ cd bash-sudo-agents
 
 ### O que o instalador faz automaticamente:
 * 📁 Cria as estruturas em `~/.gemini/config/plugins/bash-sudo-agents` e `~/.gemini/antigravity/scratch/security`.
+* 💾 Realiza **backup atômico** com timestamp de qualquer instalação anterior em `~/.gemini/antigravity/scratch/backups/`.
 * 📦 Instala as Skills e as Regras Constitucionais (`AGENTS.md`).
 * 🚧 Instala e registra o motor Python `governance-gate.py` (`PreToolUse`) em `hooks.json` com `chmod 555`.
 * 🔒 Aplica isolamento de leitura estrita (`chmod 444`) em todos os arquivos de governança.
+
+---
+
+## 🧪 Suíte de Testes e Validação
+
+O framework conta com **101 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, caminhos de governança, permissões e compressão:
+
+```bash
+# 1. Executar verificador rápido de bypass e regressão (Zero-Pip / Stdlib pura)
+python3 tests/verify_fixes.py
+
+# 2. Executar suíte completa de testes unitários (62 testes via pytest)
+uv run --with pytest pytest tests/test_governance_gate.py
+```
 
 ---
 
@@ -199,13 +215,16 @@ cd bash-sudo-agents
 ```text
 bash-sudo-agents/
 ├── 📄 .gitignore                  # Proteção contra vazamento de arquivos locais
-├── ⚙️ install.sh                  # Instalador universal automatizado (Zero-Pip)
+├── ⚙️ install.sh                  # Instalador universal automatizado com backup atômico
 ├── 📘 README.md                   # Esta documentação executiva
+├── 🧪 tests/                      # Suíte de testes automatizados (101 verificações)
+│   ├── test_governance_gate.py    # 62 testes unitários (pytest)
+│   └── verify_fixes.py            # 39 testes de segurança sem dependências externas
 ├── 🧩 plugin/
-│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v1.3.0)
+│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.1.0)
 │   ├── hooks.json                 # Registro do hook chamando python3 ./hooks/governance-gate.py
 │   ├── hooks/
-│   │   └── governance-gate.py     # 🌟 Motor Python: Segurança, Cache e Auto-Compressor
+│   │   └── governance-gate.py     # 🌟 Motor Python: Segurança, HMAC, Cache e Auto-Compressor
 │   ├── rules/
 │   │   └── AGENTS.md              # Mini Constituição injetada no prompt do sistema
 │   └── skills/

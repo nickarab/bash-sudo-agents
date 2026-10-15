@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "python3 ./hooks/governance-gate.py",
-            "timeout": 5
+            "timeout": 15
           }
         ]
       }

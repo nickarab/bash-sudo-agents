@@ -373,26 +373,42 @@ def _unwrap_privilege_prefix(argv: list[str]) -> list[str]:
 VITAL_TOP_DIRS = {"boot", "etc", "usr", "var", "sys", "proc", "dev", "bin", "sbin", "lib", "lib64"}
 
 
+def _normalize_path(arg: str, cwd: Path) -> str:
+    """Expande ~, torna absoluto relativo ao cwd e normaliza .. (sem exigir existência)."""
+    p = Path(arg).expanduser()
+    if not p.is_absolute():
+        p = cwd / p
+    return os.path.normpath(str(p))
+
+
 def _is_vital_path(arg: str) -> bool:
-    """True se o argumento aponta para a raiz ou um diretório vital (incl. filhos)."""
-    if arg in {"/", "/*", "~", "~/", "~/*", "..", "../", "../.."}:
+    """True se o caminho (já normalizado) aponta para a raiz ou um diretório vital."""
+    if arg in {"/", "/*"}:
         return True
-    if arg.startswith("~"):
-        # ~foo (home de outro usuário) ou ~/subdir não são considerados vitais
-        return False
     if arg.startswith("/"):
         rest = arg.lstrip("/")
         top = rest.split("/", 1)[0]
         top = top.split("*", 1)[0]
-        return top in VITAL_TOP_DIRS
+        if top in VITAL_TOP_DIRS:
+            return True
+        # /home exatamente ou /home/<usuario> (raiz de um home) é vital;
+        # subdiretórios de home (/home/<usuario>/...) não são.
+        if top == "home":
+            rest2 = rest[len("home"):].lstrip("/")
+            if not rest2 or "/" not in rest2:
+                return True
+        return False
     return False
 
 
-def _detect_destructive(cmd: str) -> str | None:
+def _detect_destructive(cmd: str, cwd: Path) -> str | None:
     """
     Detecção semântica de comandos destrutivos (RULE-02).
     Divide a linha em comandos, remove prefixos de privilégio e verifica o
     binário alvo e seus argumentos. Retorna o binário destrutivo ou None.
+    Caminhos são normalizados (expandido ~, absoluto vs cwd, .. resolvido)
+    antes da checagem de diretório vital. Variáveis de ambiente não resolvidas
+    ($) em argumentos destrutivos são vetadas, pois o gate roda pré-bash.
     """
     for seg in _shell_split_commands(cmd):
         argv = _unwrap_privilege_prefix(_safe_split(seg))
@@ -400,12 +416,15 @@ def _detect_destructive(cmd: str) -> str | None:
             continue
         binary = argv[0]
         args = argv[1:]
+        # Bloquear destrutivo com variável de ambiente não resolvida (pré-bash)
+        if any("$" in a for a in args if not a.startswith("-")):
+            return binary
         if binary == "rm":
             if any(a.startswith("-") and "r" in a for a in args):
                 for a in args:
                     if a.startswith("-"):
                         continue
-                    if _is_vital_path(a):
+                    if _is_vital_path(_normalize_path(a, cwd)):
                         return "rm"
         elif binary == "find":
             if any(a == "-delete" or a.startswith("-delete") for a in args):
@@ -594,7 +613,7 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
         return "deny", "[governance-gate / RULE-06] sudo_runner.sh foi descontinuado.", None
 
     # RULE-02: Veto sumário anti-destruição (semântico + regex fallback)
-    destructive_bin = _detect_destructive(cmd)
+    destructive_bin = _detect_destructive(cmd, cwd)
     if destructive_bin or DESTRUCTIVE_PATTERN.search(cmd):
         return "deny", "[governance-gate / RULE-02] Veto sumário: comando destrutivo detectado.", None
 
@@ -621,9 +640,9 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
 
     # RULE-11 e RULE-12: Proteção de governança (alvo cru + comando)
     if resolved_target and GOV_PATTERN.search(resolved_target):
-        return "force_ask", "[governance-gate / RULE-12] Escrita em arquivo de governança detectada.", None
+        return "deny", "[governance-gate / RULE-12] Escrita em arquivo de governança detectada.", None
     if GOV_PATTERN.search(cmd) and WRITE_OPS_PATTERN.search(cmd):
-        return "force_ask", "[governance-gate / RULE-12] Comando tenta modificar arquivo de governança.", None
+        return "deny", "[governance-gate / RULE-12] Comando tenta modificar arquivo de governança.", None
 
     return "allow", "", None
 
@@ -658,9 +677,9 @@ def audit_and_optimize() -> None:
         out("allow", f"Failsafe: payload inválido ({str(e)})")
 
     args = data.get("toolCall", {}).get("args", {})
-    cmd = args.get("CommandLine", "").strip()
-    target_raw = args.get("TargetFile", "").strip()
-    cwd_str = args.get("Cwd", str(HOME))
+    cmd = args.get("CommandLine", args.get("command", "")).strip()
+    target_raw = args.get("TargetFile", args.get("file_path", "")).strip()
+    cwd_str = args.get("Cwd", args.get("cwd", str(HOME)))
     cwd = Path(cwd_str)
 
     cmd_hash = hashlib.sha256(f"{cwd_str}:{cmd}".encode("utf-8")).hexdigest()[:16]

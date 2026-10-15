@@ -74,6 +74,9 @@ def main():
         # não-destrutivo: remoção recursiva de subdir do usuário é permitida
         results += [check("rm -rf /home/user/Downloads/old", "rm -rf /home/user/Downloads/old", "allow")]
         results += [check("rm -rf ~/Downloads", "rm -rf ~/Downloads", "allow")]
+        # Novos casos de regressão — bypasses C-1 e C-2 corrigidos
+        results += [check("rm -rf ~/../../etc", "rm -rf ~/../../etc", "deny")]
+        results += [check("sudo rm -rf /home/manoel", "sudo rm -rf /home/manoel", "deny")]
 
         # --- RULE-06: sudo_runner (deny) ---
         results += [check("./sudo_runner.sh", "./sudo_runner.sh", "deny")]
@@ -101,9 +104,11 @@ def main():
         results += [check("run0 systemctl restart nginx", "run0 systemctl restart nginx", "force_ask")]
         results += [check("yay -S firefox", "yay -S firefox", "force_ask")]
 
-        # --- RULE-12: governança (force_ask) ---
+        # --- RULE-12: governança (deny absoluto em arquivos de governança) ---
         results += [check("chmod 777 ~/.gemini/config/plugins/bash-sudo-agents/AGENTS.md",
-                          "chmod 777 ~/.gemini/config/plugins/bash-sudo-agents/AGENTS.md", "force_ask")]
+                          "chmod 777 ~/.gemini/config/plugins/bash-sudo-agents/AGENTS.md", "deny")]
+        results += [check("rm ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py",
+                          "rm ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py", "deny")]
 
         # --- Allow (comandos seguros) ---
         results += [check("lscpu", "lscpu", "allow")]

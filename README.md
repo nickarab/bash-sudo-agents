@@ -1,14 +1,14 @@
 <div align="center">
 
 # 🛡️ Antigravity Linux Governance
-### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.2)*
+### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.2.1)*
 
 [![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20Governance-blueviolet?style=for-the-badge&logo=diagramsdotnet)](https://github.com/nickarab/bash-sudo-agents)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Wayland%20%7C%20Hyprland-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/nickarab/bash-sudo-agents)
-[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.2-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
+[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.2.1-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
 [![Runtime Gate](https://img.shields.io/badge/Runtime%20Gate-Python%20PreToolUse-darkgreen?style=for-the-badge&logo=python)](https://github.com/nickarab/bash-sudo-agents)
 [![Optimizer](https://img.shields.io/badge/Tokens-Auto--Compressor%20%2B%20Cache-blue?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
-[![Tests](https://img.shields.io/badge/Tests-104%2F104%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
+[![Tests](https://img.shields.io/badge/Tests-108%2F108%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
 [![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Pip%20(Pure%20Stdlib)-orange?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
 
 <p align="center">
@@ -198,7 +198,7 @@ cd bash-sudo-agents
 
 ## 🧪 Suíte de Testes e Validação
 
-O framework conta com **104 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, caminhos de governança, permissões e compressão:
+O framework conta com **108 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, caminhos de governança, permissões e compressão:
 
 ```bash
 # 1. Executar verificador rápido de bypass e regressão (Zero-Pip / Stdlib pura)
@@ -217,11 +217,11 @@ bash-sudo-agents/
 ├── 📄 .gitignore                  # Proteção contra vazamento de arquivos locais
 ├── ⚙️ install.sh                  # Instalador universal automatizado com backup atômico
 ├── 📘 README.md                   # Esta documentação executiva
-├── 🧪 tests/                      # Suíte de testes automatizados (104 verificações)
+├── 🧪 tests/                      # Suíte de testes automatizados (108 verificações)
 │   ├── test_governance_gate.py    # 62 testes unitários (pytest)
-│   └── verify_fixes.py            # 42 testes de segurança sem dependências externas
+│   └── verify_fixes.py            # 46 testes de segurança sem dependências externas
 ├── 🧩 plugin/
-│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.2.0)
+│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.2.1)
 │   ├── hooks.json                 # Registro do hook chamando python3 ./hooks/governance-gate.py
 │   ├── hooks/
 │   │   └── governance-gate.py     # 🌟 Motor Python: Segurança, HMAC, Cache e Auto-Compressor

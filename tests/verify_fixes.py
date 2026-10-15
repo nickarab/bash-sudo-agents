@@ -77,6 +77,15 @@ def main():
         # Novos casos de regressão — bypasses C-1 e C-2 corrigidos
         results += [check("rm -rf ~/../../etc", "rm -rf ~/../../etc", "deny")]
         results += [check("sudo rm -rf /home/manoel", "sudo rm -rf /home/manoel", "deny")]
+        # Novos casos de regressão (v4.2.1) — correções C-1, C-2, H-4, H-6
+        results += [check("systemctl stop --user hyprland", "systemctl stop --user hyprland", "deny")]
+        results += [check("chown -R user:user /bin", "chown -R user:user /bin", "deny")]
+        results += [check("$(which sudo) ls /root", "$(which sudo) ls /root", "force_ask")]
+        # H-6: cat /etc/passwd não deve ser cacheado (sem overwrite com tee)
+        r = run_gate("cat /etc/passwd")
+        ow = r.get("overwrite", {})
+        results += [r.get("decision") == "allow" and "tee" not in ow.get("CommandLine", "")]
+        print(f"[{'PASS' if results[-1] else 'FAIL'}] cat /etc/passwd não é cacheado")
 
         # --- RULE-06: sudo_runner (deny) ---
         results += [check("./sudo_runner.sh", "./sudo_runner.sh", "deny")]

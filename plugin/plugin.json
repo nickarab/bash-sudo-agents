@@ -1,5 +1,5 @@
 {
   "name": "bash-sudo-agents",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "description": "Sistema global de governança e terminal: @agente-bash (Operador), governance-gate.py (Motor de Runtime) e @agente-sudo-policy (Gestor Constitucional)."
 }

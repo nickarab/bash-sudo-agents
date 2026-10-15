@@ -242,7 +242,7 @@ def parse_command(cmd: str) -> ParsedCommand:
             sudo_like = True
             privilege_type = "package_install"
             target_bin = first
-        elif first == "systemctl" and "--user" not in argv:
+        elif first == "systemctl":
             if len(argv) > 1 and argv[1] in {"start", "stop", "restart", "enable", "disable", "mask", "unmask"}:
                 sudo_like = True
                 privilege_type = "systemctl"
@@ -442,7 +442,7 @@ def _detect_destructive(cmd: str, cwd: Path) -> str | None:
 # Validação segura de comando para cache (Quick Win #1)
 # ---------------------------------------------------------------------------
 
-CACHEABLE_BINS = {"lscpu", "uname", "lspci", "lsusb", "cat", "pacman", "yay", "paru"}
+CACHEABLE_BINS = {"lscpu", "uname", "lspci", "lsusb", "pacman", "yay", "paru"}
 
 DANGEROUS_ARGS = {
     "-exec", "-delete", "-ok", "-execdir",
@@ -550,13 +550,13 @@ DISK_PATTERN = re.compile(
 PERM_PATTERN = re.compile(
     _BOUNDARY +
     r'(?:chmod\s+-R\s+(?:0?777|777|a\+rwx|ugo\+rwx|a=rwx)\b'
-    r'|chown\s+-R\s+\S+\s+(?:/|/(?:boot|etc|usr|var|sys|proc|dev)(?:/.*)?))'
+    r'|chown\s+-R\s+\S+\s+(?:/|/(?:boot|etc|usr|var|sys|proc|dev|bin|sbin|lib|lib64)(?:/.*)?))'
 )
 
 # RULE-07: Estabilidade de serviços essenciais — veto a derrubar a sessão ativa
 SERVICE_PATTERN = re.compile(
     _BOUNDARY +
-    r'(?:systemctl\s+(?:stop|disable|mask|kill)\s+(?:sddm|gdm|ly|lightdm|display-manager|getty\S*|hyprland)'
+    r'(?:systemctl\s+(?:--user\s+)?(?:stop|disable|mask|kill)\s+(?:--user\s+)?(?:sddm|gdm|ly|lightdm|display-manager|getty\S*|hyprland)'
     r'|(?:pkill|killall|kill)\s+-?\w*\s*(?:hyprland|Hyprland|wayland|Xorg|Xwayland|sddm|gdm|sddm-helper|gnome-shell|sway)'
     r'|kill\s+-9\s+1\b)'
 )
@@ -570,6 +570,8 @@ PRIV_PATTERN = re.compile(
     r'|(^|[;&|`\s])sudo\s+(-u|-i|--user|--login)\s+'
     r'|(^|[;&|`\s])(yay|paru)\s+-S'
     r'|(^|[;&|`\s])systemctl\s+(start|stop|restart|enable|disable|mask|unmask)\s+(?!.*--user)'
+    r'|\$\([^)]*(?:sudo|doas|pkexec|su|run0)[^)]*\)'
+    r'|`[^`]*(?:sudo|doas|pkexec|su|run0)[^`]*`'
 )
 
 # RULE-11 e RULE-12: Proteção da infraestrutura de governança

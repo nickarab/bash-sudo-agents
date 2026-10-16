@@ -17,14 +17,16 @@ python3 -c "import sys; assert sys.version_info >= (3, 8)" 2>/dev/null || {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_PLUGIN_DIR="$HOME/.gemini/config/plugins/bash-sudo-agents"
+TARGET_AGENTS_DIR="$HOME/.gemini/config/agents"
 TARGET_SECURITY_DIR="$HOME/.gemini/antigravity/scratch/security"
 BACKUP_DIR="$HOME/.gemini/antigravity/scratch/backups"
 
 echo "[1/4] Criando diretórios de destino..."
-mkdir -p "$TARGET_PLUGIN_DIR/hooks" "$TARGET_PLUGIN_DIR/agents" "$TARGET_SECURITY_DIR" "$BACKUP_DIR"
+mkdir -p "$TARGET_PLUGIN_DIR/hooks" "$TARGET_PLUGIN_DIR/agents" "$TARGET_AGENTS_DIR" "$TARGET_SECURITY_DIR" "$BACKUP_DIR"
 
 echo "[2/4] Instalando plugin de agentes e motor Python..."
 chmod -R u+rwX "$TARGET_PLUGIN_DIR" 2>/dev/null || true
+chmod -R u+rwX "$TARGET_AGENTS_DIR" 2>/dev/null || true
 
 # Backup atômico antes de sobrescrever (Seção 5.4)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -33,6 +35,7 @@ if [ -d "$TARGET_PLUGIN_DIR" ] && [ "$(ls -A "$TARGET_PLUGIN_DIR" 2>/dev/null)" 
 fi
 
 cp -r "$SCRIPT_DIR/plugin/"* "$TARGET_PLUGIN_DIR/"
+cp -r "$SCRIPT_DIR/plugin/agents/"*.md "$TARGET_AGENTS_DIR/"
 find "$TARGET_PLUGIN_DIR" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 chmod 555 "$TARGET_PLUGIN_DIR/hooks/governance-gate.py" 2>/dev/null || true
 chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" 2>/dev/null || true
@@ -47,6 +50,7 @@ echo "[4/4] Aplicando blindagem de somente-leitura (chmod 444)..."
 chmod 444 "$TARGET_PLUGIN_DIR/plugin.json" \
           "$TARGET_PLUGIN_DIR/rules/AGENTS.md" \
           "$TARGET_PLUGIN_DIR/agents/"*.md \
+          "$TARGET_AGENTS_DIR/"*.md \
           "$TARGET_PLUGIN_DIR/skills/"*"/SKILL.md" \
           "$TARGET_SECURITY_DIR/"*.json \
           "$TARGET_SECURITY_DIR/"*.md 2>/dev/null || true

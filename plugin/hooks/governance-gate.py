@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-governance-gate.py — Antigravity Linux Governance Engine (v4.3.0)
+governance-gate.py — Antigravity Linux Governance Engine (v4.4.0)
 Arquitetura do Sistema:
   - @agente-bash: Operador de Terminal (LLM)
   - governance-gate.py: Motor de Governança, Firewall, Cache e Compressor físico no SO (Runtime Hook)
@@ -8,13 +8,19 @@ Arquitetura do Sistema:
 Recursos:
   1. Auditoria e Firewall Constitucional (RULE-01 a RULE-15)
   2. Auto-Compressor Sintático de Tokens (overwrite com blindagem de sintaxe)
-  3. Cache Local de Saídas com TTL e assinatura HMAC-SHA256
+  3. Cache Local de Saídas com TTL (diretório 0700, mesma conta de usuário)
   4. Failsafe Universal (Zero Downtime)
   5. Estado de Rejeição Persistente (RULE-10 - 3X com TTL 24h)
   6. Re-validação de Overwrite (comando modificado re-auditado)
   7. Parser semântico com shlex para substituição de regex frágeis
   8. Detecção semântica de destruição (rm/find/shred/dd) com split de shell
-  9. RULE-03 (disco/formatação), RULE-05 (permissões) e RULE-07 (serviços críticos)
+  9. RULE-03 (disco/formatação), RULE-05 (permissões, semântica) e RULE-07 (serviços
+     críticos + classe de energia: reboot/poweroff/suspend sempre force_ask)
+  10. Taxonomia de privilégio anti-fadiga (v4.4.0): elevação rotineira (sudo/doas/
+      pkexec/su/run0, pacman/yay/paru -S*, systemctl de sistema) usa decisão "ask",
+      que respeita o "Always Allow" nativo do Antigravity. "force_ask" (sempre
+      pergunta, ignora grants) fica reservado a disco/formatação, monitores,
+      governança e energia. "deny" fica reservado a destruição real.
 Zero dependências externas (estritamente Python 3.8+ Standard Library).
 """
 
@@ -25,7 +31,6 @@ import os
 import re
 import shlex
 import hashlib
-import hmac
 import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -42,7 +47,6 @@ REJECTION_STATE_FILE = CACHE_DIR / "rejection_state.json"
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-HMAC_SECRET_FILE = CACHE_DIR / ".hmac_secret"
 REJECTION_TTL_SECONDS = 86400  # 24 horas
 REJECTION_LIMIT = 3
 REJECTION_WINDOW_SECONDS = 3600  # 1 hora — janela de sessão/tempo para a Regra 3X
@@ -105,37 +109,6 @@ def _escalation_reason(reason: str, cwd: str) -> str:
         f"{reason} — Contexto: {cwd}. "
         "EXECUÇÃO SUSPENSA. Aguardando intervenção manual do administrador."
     )
-
-
-# ---------------------------------------------------------------------------
-# HMAC para assinatura de cache (Seção 5.4)
-# ---------------------------------------------------------------------------
-
-def _load_or_create_hmac_secret() -> bytes:
-    """Carrega ou cria a chave secreta HMAC usada para assinar entradas de cache."""
-    try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        os.chmod(CACHE_DIR, 0o700)  # Quick Win #7
-        if HMAC_SECRET_FILE.exists():
-            return HMAC_SECRET_FILE.read_bytes()
-        secret = os.urandom(32)
-        HMAC_SECRET_FILE.write_bytes(secret)
-        os.chmod(HMAC_SECRET_FILE, 0o600)
-        return secret
-    except Exception:
-        # Sem fallback estático: em falha de I/O, gera segredo efêmero em memória.
-        return os.urandom(32)
-
-
-def _sign_cache_entry(payload: dict, secret: bytes) -> str:
-    """Gera assinatura HMAC-SHA256 para uma entrada de cache."""
-    return hmac.new(secret, json.dumps(payload, sort_keys=True).encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def _verify_cache_signature(payload: dict, signature: str, secret: bytes) -> bool:
-    """Verifica a assinatura HMAC de uma entrada de cache."""
-    expected = _sign_cache_entry(payload, secret)
-    return hmac.compare_digest(expected, signature)
 
 
 # ---------------------------------------------------------------------------
@@ -237,10 +210,17 @@ def parse_command(cmd: str) -> ParsedCommand:
 
     if argv:
         first = argv[0]
+        # sudoedit é sudo em modo de edição (edita arquivos como root)
+        if first == "sudoedit":
+            sudo_like = True
+            privilege_type = "sudoedit"
+            target_bin = "sudoedit"
         # Comandos diretos de privilégio
-        if first in {"sudo", "doas", "pkexec", "su", "run0"}:
+        elif first in {"sudo", "doas", "pkexec", "su", "run0"}:
             sudo_like = True
             privilege_type = first
+            if first == "sudo" and ("-e" in argv[1:] or "--edit" in argv[1:]):
+                privilege_type = "sudoedit"
             # O comando real vem após as flags do sudo
             # Ex: sudo -u user cmd -> cmd
             remaining = argv[1:]
@@ -264,12 +244,19 @@ def parse_command(cmd: str) -> ParsedCommand:
                     break
             else:
                 target_bin = None
-        elif first in {"yay", "paru", "pacman"} and "-S" in argv[1:]:
-            sudo_like = True
-            privilege_type = "package_install"
-            target_bin = first
+        elif first in {"yay", "paru", "pacman"}:
+            # Qualquer flag iniciada por -S exceto busca (-Ss) e info (-Si):
+            # -S, -Sy, -Syu, -Sw... todos operam no sistema com elevação.
+            for tok in argv[1:]:
+                if re.match(r"^-S(?![si])", tok):
+                    sudo_like = True
+                    privilege_type = "package_install"
+                    target_bin = first
+                    break
         elif first == "systemctl":
-            if len(argv) > 1 and argv[1] in {"start", "stop", "restart", "enable", "disable", "mask", "unmask"}:
+            # Verbos de mutação em qualquer posição; --user nunca é privilégio de sistema.
+            verbs = {"start", "stop", "restart", "enable", "disable", "mask", "unmask"}
+            if "--user" not in argv[1:] and any(t in verbs for t in argv[1:]):
                 sudo_like = True
                 privilege_type = "systemctl"
                 target_bin = "systemctl"
@@ -561,6 +548,142 @@ def _detect_destructive(cmd: str, cwd: Path) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Detecção semântica de abuso de permissões (RULE-05, v4.4.0)
+# Substitui o casamento posicional de regex, que era burlado por ordem de
+# flags ("chmod 777 -R /etc"), variantes de modo ("a+w") e "--recursive".
+# ---------------------------------------------------------------------------
+
+def _is_recursive_perm_flag(a: str) -> bool:
+    """True para -R, --recursive e combinações (-Rf, -vR...)."""
+    if a == "--recursive":
+        return True
+    return a.startswith("-") and not a.startswith("--") and "R" in a
+
+
+_WORLD_WRITABLE_SYMBOLIC = {
+    "a+w", "o+w", "go+w", "ugo+w",
+    "a=rwx", "a+rwx", "ugo+rwx", "ugo=rwx", "o=rwx", "go=rwx",
+}
+
+
+def _mode_is_world_writable(tok: str) -> bool:
+    """True para modos que concedem escrita a 'others' (777, 757, a+w, o=rwx...)."""
+    t = tok.lower()
+    if t in _WORLD_WRITABLE_SYMBOLIC:
+        return True
+    if t.isdigit() and len(t) >= 3:
+        # Último dígito octal = permissão de "others"; bit 2 = escrita.
+        return bool(int(t[-1]) & 2)
+    return False
+
+
+def _looks_like_mode(tok: str) -> bool:
+    return tok.isdigit() or "+" in tok or "=" in tok
+
+
+def _is_system_path_norm(norm: str) -> bool:
+    """True se o caminho normalizado é a raiz ou tem topo vital do SO (sem home)."""
+    if norm == "/":
+        return True
+    if norm.startswith("/"):
+        top = norm.lstrip("/").split("/", 1)[0]
+        return top in VITAL_TOP_DIRS
+    return False
+
+
+def _chmod_is_abusive(args: list[str], cwd: Path) -> bool:
+    """chmod abusivo: recursivo + modo world-writable (qualquer alvo) ou
+    recursivo com qualquer modo sobre caminho do sistema."""
+    if not any(_is_recursive_perm_flag(a) for a in args):
+        return False
+    targets: list[str] = []
+    for a in args:
+        if a.startswith("-"):
+            continue
+        if _mode_is_world_writable(a):
+            return True
+        if not _looks_like_mode(a):
+            targets.append(a)
+    for a in targets:
+        if "$" in a:
+            return True
+        if _is_system_path_norm(_normalize_path(a, cwd)):
+            return True
+    return False
+
+
+def _chown_is_abusive(args: list[str], cwd: Path) -> bool:
+    """chown abusivo: recursivo sobre a raiz ou diretórios vitais do SO."""
+    if not any(_is_recursive_perm_flag(a) for a in args):
+        return False
+    operands = [a for a in args if not a.startswith("-")]
+    # operands[0] é o dono (user[:group]); o resto são alvos.
+    for a in operands[1:]:
+        if "$" in a:
+            return True
+        if _is_system_path_norm(_normalize_path(a, cwd)):
+            return True
+    return False
+
+
+def _detect_perm_abuse(cmd: str, cwd: Path) -> str | None:
+    """Retorna 'chmod'/'chown' se algum segmento do comando abusa de permissões."""
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary == "chmod" and _chmod_is_abusive(argv[1:], cwd):
+            return "chmod"
+        if binary == "chown" and _chown_is_abusive(argv[1:], cwd):
+            return "chown"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Intenção de escrita em monitores (RULE-01, v4.4.0)
+# Leitura de monitors.lua/monitors.conf é diagnóstico livre (RULE-09); apenas
+# edição/escrita retém para confirmação.
+# ---------------------------------------------------------------------------
+
+READ_ONLY_BINS = {
+    "cat", "less", "more", "head", "tail", "grep", "egrep", "fgrep", "rg",
+    "find", "ls", "ll", "file", "stat", "wc", "strings", "xxd", "od",
+    "hexdump", "bat", "diff", "cmp", "sort", "uniq", "tr", "cut", "jq", "awk",
+}
+
+
+def _monitor_write_intent(cmd: str) -> bool:
+    """True se o comando implica escrita/edição (não mera leitura)."""
+    if WRITE_OPS_PATTERN.search(cmd):
+        return True
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary in READ_ONLY_BINS:
+            continue
+        # Binário desconhecido/editor sobre arquivo de monitor: conservador, retém.
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Detecção de privilégio por segmento (RULE-15, v4.4.0)
+# Elimina o falso positivo do regex global ("echo su") e cobre "x; sudo y".
+# ---------------------------------------------------------------------------
+
+def _cmd_is_privileged(cmd: str) -> tuple[bool, str | None]:
+    """True se algum segmento do comando é uma elevação de privilégio."""
+    for seg in _shell_split_commands(cmd):
+        p = parse_command(seg)
+        if p.sudo_like:
+            return True, p.privilege_type
+    return False, None
+
+
+# ---------------------------------------------------------------------------
 # Validação segura de comando para cache (Quick Win #1)
 # ---------------------------------------------------------------------------
 
@@ -597,11 +720,13 @@ def _is_cacheable(cmd: str) -> bool:
     return False
 
 
-def safe_cache_wrap(cmd: str, cache_file: Path) -> str:
+def safe_cache_wrap(cmd: str, cache_file: Path, pipe_suffix: str | None = None) -> str:
     """
     Wrap seguro de comando para cache.
     Apenas comandos na whitelist CACHEABLE_BINS são wrapados.
     Reconstrução segura com shlex.quote para cada argumento.
+    pipe_suffix (ex.: "head -n 25") é embutido DENTRO do sub-shell, para que o
+    cache já armazene a saída comprimida (compressor + cache na mesma etapa).
     """
     if not _is_cacheable(cmd):
         return cmd  # Não wrapar — executa direto sem cache
@@ -612,6 +737,8 @@ def safe_cache_wrap(cmd: str, cache_file: Path) -> str:
         return cmd
 
     safe_cmd = " ".join(shlex.quote(arg) for arg in argv)
+    if pipe_suffix:
+        safe_cmd = f"{safe_cmd} | {pipe_suffix}"
     return f"( {safe_cmd} ) | tee {shlex.quote(str(cache_file))}"
 
 
@@ -672,10 +799,12 @@ DESTRUCTIVE_PATTERN = re.compile(
 DISK_PATTERN = re.compile(
     _BOUNDARY +
     r'(?:mkfs\b|fdisk\b|parted\b|umount\b|wipefs\b|losetup\b'
+    r'|cryptsetup\b|sgdisk\b|gdisk\b|cfdisk\b'
     r'|mount\s+(?:-[a-zA-Z]|\S+))'
 )
 
-# RULE-05: Preservação de permissões — veto a chmod/chown recursivos abusivos
+# RULE-05: Preservação de permissões — fallback regex para sub-shells $(...)
+# (a detecção primária é semântica: _detect_perm_abuse)
 PERM_PATTERN = re.compile(
     _BOUNDARY +
     r'(?:chmod\s+-R\s+(?:0?777|777|a\+rwx|ugo\+rwx|a=rwx)\b'
@@ -683,32 +812,49 @@ PERM_PATTERN = re.compile(
 )
 
 # RULE-07: Estabilidade de serviços essenciais — veto a derrubar a sessão ativa
+# (restart incluído: reiniciar o display manager/compositor também derruba a sessão)
 SERVICE_PATTERN = re.compile(
     _BOUNDARY +
-    r'(?:systemctl\s+(?:--user\s+)?(?:stop|disable|mask|kill)\s+(?:--user\s+)?(?:sddm|gdm|ly|lightdm|display-manager|getty\S*|hyprland)'
+    r'(?:systemctl\s+(?:--user\s+)?(?:stop|disable|mask|kill|restart)\s+(?:--user\s+)?(?:sddm|gdm|ly|lightdm|display-manager|getty\S*|hyprland)'
     r'|(?:pkill|killall|kill)\s+-?\w*\s*(?:hyprland|Hyprland|wayland|Xorg|Xwayland|sddm|gdm|sddm-helper|gnome-shell|sway)'
     r'|kill\s+-9\s+1\b)'
+)
+
+# RULE-07 (classe de energia/sessão, v4.4.0): desligar, reiniciar ou suspender a
+# máquina/sessão NUNCA é operação silenciosa — sempre force_ask (sem cache de grant).
+POWER_PATTERN = re.compile(
+    _BOUNDARY +
+    r'(?:systemctl\s+(?:--\S+\s+)*(?:reboot|poweroff|halt|suspend-then-hibernate|suspend|hibernate|hybrid-sleep|kexec)(?:\s|$)'
+    r'|loginctl\s+(?:reboot|poweroff|suspend|hibernate|lock-session|lock-sessions|terminate-user|kill-user)(?:\s|$)'
+    r'|(?:shutdown|reboot|poweroff|halt|telinit)(?:\s|$)'
+    r'|init\s+[06](?:\s|$))'
 )
 
 # RULE-01: Monitores
 MONITOR_PATTERN = re.compile(r'monitors\.lua|hyprland/.*monitors?\.conf')
 
-# RULE-15: Taxonomia de privilégios
-PRIV_PATTERN = re.compile(
-    r'(^|[;&|(`\s])(sudo|doas|pkexec|su|run0)(\s|$)'
-    r'|(^|[;&|`\s])sudo\s+(-u|-i|--user|--login)\s+'
-    r'|(^|[;&|`\s])(yay|paru)\s+-S(?:\s|$)'
-    r'|(^|[;&|`\s])systemctl\s+(start|stop|restart|enable|disable|mask|unmask)\s+(?!.*--user)'
-    r'|\$\([^)]*(?:sudo|doas|pkexec|su|run0)[^)]*\)'
-    r'|`[^`]*(?:sudo|doas|pkexec|su|run0)[^`]*`'
+# RULE-15: fallback para elevação escondida em sub-shells $(...) ou crases.
+# A detecção primária é semântica por segmento (_cmd_is_privileged).
+SUBSHELL_PRIV_PATTERN = re.compile(
+    r'\$\([^)]*(?:sudo|doas|pkexec|run0|\bsu\b)[^)]*\)'
+    r'|`[^`]*(?:sudo|doas|pkexec|run0|\bsu\b)[^`]*`'
 )
 
-# RULE-11 e RULE-12: Proteção da infraestrutura de governança
+# RULE-11 e RULE-12: Proteção da infraestrutura de governança.
+# Cobre o plugin, as políticas, o config e TODOS os pontos de registro de hooks
+# (global e workspace), para que o próprio gate não possa ser desligado/substituído.
 GOV_PATTERN = re.compile(
     r'plugins/bash-sudo-agents/|scratch/security/|\.gemini/config/config\.json'
+    r'|\.gemini/config/hooks\.json|\.agents/hooks\.json'
 )
 WRITE_OPS_PATTERN = re.compile(
-    r'(>|\btee\b|sed\s+-i|(^|[;&|\s])(chmod|chown|chattr|rm|mv|cp|install|shred)(\s|$))'
+    r'(>(?!&)'
+    r'|\btee\b'
+    r'|\bsed\s+-i'
+    r'|\bdd\b[^;&|\n]*\bof='
+    r'|\brsync\b'
+    r'|\btar\s+(?:-[a-zA-Z]*x|--extract)'
+    r'|(^|[;&|\s])(chmod|chown|chattr|rm|mv|cp|install|shred|ln|unlink)(\s|$))'
 )
 
 
@@ -752,28 +898,40 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
     if SERVICE_PATTERN.search(cmd):
         return "deny", "[governance-gate / RULE-07] Tentativa de interromper serviço crítico da sessão.", None
 
-    # RULE-05: Preservação da árvore de permissões
-    if PERM_PATTERN.search(cmd):
+    # RULE-05: Preservação da árvore de permissões (semântica + regex fallback)
+    if _detect_perm_abuse(cmd, cwd) or PERM_PATTERN.search(cmd):
         return "deny", "[governance-gate / RULE-05] Alteração recursiva de permissões em diretório protegido.", None
 
-    # RULE-01: Soberania do Display
-    if MONITOR_PATTERN.search(cmd) or MONITOR_PATTERN.search(target_str) \
+    # RULE-01: Soberania do Display — leitura é livre (RULE-09); escrita retém.
+    if MONITOR_PATTERN.search(target_str) \
             or (target_path and MONITOR_PATTERN.search(str(target_path))):
+        return "force_ask", "[governance-gate / RULE-01] Alteração em configuração de monitores detectada.", None
+    if MONITOR_PATTERN.search(cmd) and _monitor_write_intent(cmd):
         return "force_ask", "[governance-gate / RULE-01] Alteração em configuração de monitores detectada.", None
 
     # RULE-03: Operações de disco e formatação controladas
     if DISK_PATTERN.search(cmd):
         return "force_ask", "[governance-gate / RULE-03] Operação de disco/formatação exige confirmação explícita.", None
 
-    # RULE-15: Taxonomia de comandos privilegiados
-    if parsed.sudo_like or PRIV_PATTERN.search(cmd):
-        return "force_ask", f"[governance-gate / RULE-15] Comando com privilégios detectado ({parsed.privilege_type or 'privileged'}).", None
+    # RULE-07 (classe de energia): reboot/poweroff/suspend sempre exigem confirmação.
+    if POWER_PATTERN.search(cmd):
+        return "force_ask", "[governance-gate / RULE-07] Desligamento/reinício/suspensão da máquina ou da sessão exige confirmação explícita.", None
 
-    # RULE-11 e RULE-12: Proteção de governança (alvo cru + comando)
+    # RULE-11 e RULE-12: Proteção de governança — avaliada ANTES da taxonomia de
+    # privilégio, para que "sudo rm <arquivo do gate>" seja veto, não mero ask.
     if resolved_target and GOV_PATTERN.search(resolved_target):
         return "deny", "[governance-gate / RULE-12] Escrita em arquivo de governança detectada.", None
     if GOV_PATTERN.search(cmd) and WRITE_OPS_PATTERN.search(cmd):
         return "deny", "[governance-gate / RULE-12] Comando tenta modificar arquivo de governança.", None
+
+    # RULE-15: Elevação de privilégio rotineira — decisão "ask" (respeita o
+    # "Always Allow" nativo: aprova uma vez por recurso e não é mais perguntado).
+    privileged, ptype = _cmd_is_privileged(cmd)
+    if privileged or SUBSHELL_PRIV_PATTERN.search(cmd):
+        return "ask", (
+            f"[governance-gate / RULE-15] Elevação de privilégio ({ptype or 'privileged'}). "
+            "Aprove e marque 'Always Allow' para não ser perguntado novamente."
+        ), None
 
     return "allow", "", None
 
@@ -797,7 +955,6 @@ def _emit_overwrite(new_cmd: str, rule: str, target_path: Path | None, cwd: Path
 
 def audit_and_optimize() -> None:
     start_ms = _now_ms()
-    secret = _load_or_create_hmac_secret()
 
     try:
         raw_input = sys.stdin.read()
@@ -846,21 +1003,26 @@ def audit_and_optimize() -> None:
         # confirmações legítimas (force_ask).
         count = _increment_rejection(rejection_key)
         latency_ms = _now_ms() - start_ms
-        audit_log(decision, reason, "RULE-02/05/06/07", cmd, cwd_str, latency_ms)
+        audit_log(decision, reason, "RULE-02/05/06/07/12", cmd, cwd_str, latency_ms)
         if count >= REJECTION_LIMIT:
             out("deny", _escalation_reason(reason, cwd_str))
         out("deny", reason)
 
     if decision == "force_ask":
         latency_ms = _now_ms() - start_ms
-        audit_log(decision, reason, "RULE-01/03/12/15", cmd, cwd_str, latency_ms)
+        audit_log(decision, reason, "RULE-01/03/07", cmd, cwd_str, latency_ms)
         out("force_ask", reason)
+
+    if decision == "ask":
+        latency_ms = _now_ms() - start_ms
+        audit_log(decision, reason, "RULE-15", cmd, cwd_str, latency_ms)
+        out("ask", reason)
 
     if not cmd:
         out("allow", "", cmd_hash=env_hash, latency_ms=_now_ms() - start_ms)
 
     # =========================================================================
-    # 2. CACHE LOCAL COM TTL E ASSINATURA HMAC (Quick Wins #1, #5, #7)
+    # 2. CACHE LOCAL COM TTL (Quick Wins #1, #5, #7 — diretório 0700)
     # =========================================================================
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -882,39 +1044,21 @@ def audit_and_optimize() -> None:
     cache_file = CACHE_DIR / f"{env_hash}.cache"
 
     if ttl > 0:
-        # Leitura segura do cache (TOCTOU fixo — ler uma única vez)
+        # Leitura do cache com TTL (proteção real: diretório 0700 da conta do usuário)
         if cache_file.exists() and cache_file.stat().st_size > 0:
             try:
                 mtime = cache_file.stat().st_mtime
                 if (time.time() - mtime) < ttl:
-                    cached_data = cache_file.read_text(encoding="utf-8")
-                    # Verificar assinatura HMAC se presente
-                    try:
-                        cached_json = json.loads(cached_data)
-                        if isinstance(cached_json, dict) and "sig" in cached_json:
-                            if not _verify_cache_signature(
-                                {k: v for k, v in cached_json.items() if k != "sig"},
-                                cached_json["sig"], secret
-                            ):
-                                # Assinatura inválida — ignora cache (cai para rewrite)
-                                pass
-                            else:
-                                _emit_overwrite(f"cat {shlex.quote(str(cache_file))}", "CACHE_HIT",
-                                                target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
-                        else:
-                            # Cache legado sem assinatura — ainda válido
-                            _emit_overwrite(f"cat {shlex.quote(str(cache_file))}", "CACHE_HIT",
-                                            target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
-                    except (json.JSONDecodeError, KeyError):
-                        # Cache não-JSON (legado) — ainda válido
-                        _emit_overwrite(f"cat {shlex.quote(str(cache_file))}", "CACHE_HIT",
-                                        target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
+                    _emit_overwrite(f"cat {shlex.quote(str(cache_file))}", "CACHE_HIT",
+                                    target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
             except Exception:
                 pass
 
-        # Escrever no cache com wrap seguro (Quick Win #1)
+        # Escrever no cache com wrap seguro (Quick Win #1). Buscas de pacote já
+        # gravam a saída comprimida (compressor embutido no wrap — Seção 5.5).
         if ">" not in cmd and "|" not in cmd:
-            wrapped_cmd = safe_cache_wrap(cmd, cache_file)
+            suffix = "head -n 25" if re.match(r'^(pacman|yay|paru)\s+-Ss\s+', cmd) else None
+            wrapped_cmd = safe_cache_wrap(cmd, cache_file, pipe_suffix=suffix)
             if wrapped_cmd != cmd:
                 _emit_overwrite(wrapped_cmd, "CACHE_WRITE", target_path, cwd,
                                 env_hash, _now_ms() - start_ms, cwd_str)

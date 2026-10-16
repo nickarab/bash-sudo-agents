@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "=========================================================="
-echo " Instalador: Sistema de Governança de Agentes (v4.1 Python)"
+echo " Instalador: Sistema de Governança de Agentes (v4.4.0 Python)"
 echo "=========================================================="
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -33,6 +33,7 @@ if [ -d "$TARGET_PLUGIN_DIR" ] && [ "$(ls -A "$TARGET_PLUGIN_DIR" 2>/dev/null)" 
 fi
 
 cp -r "$SCRIPT_DIR/plugin/"* "$TARGET_PLUGIN_DIR/"
+find "$TARGET_PLUGIN_DIR" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 chmod 555 "$TARGET_PLUGIN_DIR/hooks/governance-gate.py" 2>/dev/null || true
 chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" 2>/dev/null || true
 
@@ -50,7 +51,7 @@ chmod 444 "$TARGET_PLUGIN_DIR/plugin.json" \
           "$TARGET_SECURITY_DIR/"*.md 2>/dev/null || true
 
 echo ""
-echo "✅ Instalação v4.1 (Python Engine + Segurança Reforçada) concluída com sucesso!"
+echo "✅ Instalação v4.4.0 (Python Engine + Taxonomia Anti-Fadiga) concluída com sucesso!"
 echo "Plugin:    $TARGET_PLUGIN_DIR"
 echo "Políticas: $TARGET_SECURITY_DIR"
 echo "Backup:    $BACKUP_DIR/plugin_$TIMESTAMP"

@@ -17,10 +17,11 @@
 ### `governance-gate.py` (Motor de Governança, Contenção e Cache no Runtime)
 - **Papel e Arquitetura:** Opera no nível do sistema operacional como hook `PreToolUse` nativo do Antigravity. É a barreira física de segurança e otimização do sistema.
 - **Poderes de Fiscalização no SO:**
-  - **ALLOW:** Autoriza a execução direta de comandos seguros e diagnósticos normais.
-  - **OVERWRITE:** Injeta automaticamente limitadores de saída (`--no-pager`, `tail -n 35`, etc.) para economizar tokens ou redireciona leituras para o **Cache Local com TTL**.
-  - **FORCE_ASK:** Retém a chamada no sistema operacional e exige autorização explícita do usuário na tela (obrigatório para comandos com `sudo`, `doas`, `yay -S`, alterações em `monitors.lua` ou escritas em governança).
-  - **DENY:** Bloqueio físico sumário imediato no SO contra comandos destrutivos (ex.: `rm -rf /` ou caminhos vitais do sistema).
+  - **ALLOW:** Autoriza a execução direta de comandos seguros e diagnósticos normais (incluindo leitura de `monitors.lua`).
+  - **OVERWRITE:** Injeta automaticamente limitadores de saída (`--no-pager`, `tail -n 35`, `head -n 25`, etc.) para economizar tokens ou redireciona leituras para o **Cache Local com TTL**.
+  - **ASK:** Retém elevação de privilégio rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `pacman/yay/paru -S*`, `systemctl` de sistema) respeitando o grant nativo **"Always Allow"** do Antigravity (aprova uma vez, lembra sempre).
+  - **FORCE_ASK:** Retém a chamada no sistema operacional e exige confirmação explícita do usuário **sempre** (ignora grants cacheados), reservado para operações irreversíveis ou de alto impacto: formatação/disco (`mkfs`, `fdisk`, `cryptsetup`, `mount`), escrita em `monitors.lua` e energia/sessão (`reboot`, `poweroff`, `shutdown`, `suspend`).
+  - **DENY:** Bloqueio físico sumário imediato no SO contra comandos destrutivos (`rm -rf /`, `chmod -R 777 /etc`, derrubada de display manager ou tentativa de escrita/remoção dos arquivos de governança e `hooks.json`).
 
 ### `@agente-sudo-policy` / `@agente_sudo_policy` (Gestor Constitucional para o Usuário)
 - **Ativação:** Chamado pelo usuário via slash command `/agente-sudo-policy` ou menção `@agente-sudo-policy`.
@@ -43,18 +44,18 @@
 
 ## 3. Artigos de Segurança Obrigatórios (policies.json v4.0)
 
-- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Fiscalizado fisicamente pelo motor `governance-gate.py` gerando `force_ask`.
+- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Leitura é livre (`allow`); escrita é fiscalizada fisicamente pelo motor `governance-gate.py` gerando `force_ask`.
 - **RULE-02 (Imunidade de Diretórios Vitais):** Veto sumário (`deny` físico) a remoções recursivas indiscriminadas na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/usr`, `/sys`, `/proc`, `/dev`, `/var`).
-- **RULE-03 (Operações de Disco e Formatação Controlada):** Comandos de disco e formatação (`mkfs`, `fdisk`, `parted`, `dd`) são autorizados quando explicitamente solicitados para um dispositivo específico. Blindagem de partições ativas.
+- **RULE-03 (Operações de Disco e Formatação Controlada):** Comandos de disco e formatação (`mkfs`, `fdisk`, `parted`, `cryptsetup`, `dd`) exigem confirmação explícita (`force_ask`) e blindam partições ativas.
 - **RULE-04 (Aderência Estrita ao Escopo):** O comando deve ater-se exclusivamente à necessidade da tarefa solicitada pelo usuário.
-- **RULE-05 (Preservação de Permissões):** Veto a permissões globais permissivas (`chmod -R 777 /`) ou alterações recursivas de proprietário (`chown -R`) em diretórios do sistema.
+- **RULE-05 (Preservação de Permissões):** Veto semântico (`deny`) a permissões recursivas world-writable (`chmod -R 777`, `chmod 777 -R`, `a+w`) ou alterações recursivas (`chmod -R` / `chown -R`) em diretórios vitais do sistema.
 - **RULE-06 (Privacidade e Credenciais):** Enforce de `HISTFILE=/dev/null`. Descontinuação e veto permanente a runners com senhas locais em base64.
-- **RULE-07 (Estabilidade de Serviços Essenciais):** Proibido matar processos ou desabilitar serviços críticos (Hyprland, wayland, sddm, gdm, systemd PID 1).
+- **RULE-07 (Estabilidade de Serviços Essenciais e Energia):** Proibido matar processos, parar ou reiniciar serviços críticos da sessão gráfica (Hyprland, wayland, sddm, gdm, systemd PID 1 — `deny`). Comandos de energia/sessão (`reboot`, `poweroff`, `shutdown`, `suspend`, `loginctl lock-session`) exigem sempre confirmação explícita (`force_ask`).
 - **RULE-08 (Mitigação Inteligente e Auto-Adaptação):** Diante de impedimento ou erro, o agente remodela a estratégia de forma autônoma sem transferir ruído ao usuário.
 - **RULE-09 (Acesso Irrestrito para Diagnóstico):** Conceder acesso imediato para o `@agente-bash` ler logs, status de rede, sensores e contexto da máquina.
 - **RULE-10 (Limite de Recusas e Escalação Humana / Regra 3X):** Teto máximo de exatamente 3 rejeições consecutivas. Na 3ª recusa, o agente suspende o loop e escala ao administrador com histórico técnico.
 - **RULE-11 (Imutabilidade Constitucional e Mediação Flexível):** Monopólio legislativo exclusivo do `@agente-sudo-policy`. Veto de escrita direta nos caminhos de governança.
-- **RULE-12 (Blindagem de Governança e Hooks de Runtime):** Todos os arquivos de governança são mantidos em `chmod 444` e protegidos pelo motor `governance-gate.py`.
+- **RULE-12 (Blindagem de Governança e Hooks de Runtime):** Todos os arquivos de governança e registros de hooks (`hooks.json` global e workspace) são mantidos em `chmod 444` e protegidos por `deny` no motor `governance-gate.py` (incluindo contra `sudo rm`, `dd`, `rsync`, `tar` e `ln`).
 - **RULE-13 (Persistência de Sessão Contínua / Modo Sticky):** Mantém a escuta do `@agente-bash` ativa durante a sessão até comando explícito de saída ou invocação de outro agente.
 - **RULE-14 (Rito Proposta-Primeiro / Proposal-First):** Propostas de regras geram apenas texto no chat. Modificações em disco só são executadas quando o usuário emitir confirmação explícita ao `@agente-sudo-policy`.
-- **RULE-15 (Taxonomia de Comandos Privilegiados):** Retenção e fiscalização física no SO via `governance-gate.py` para: `sudo`, `doas`, `pkexec`, `su`, `yay/paru -S`, `mount` e escritas em `/etc`, `/usr`, `/boot`.
+- **RULE-15 (Taxonomia de Comandos Privilegiados Anti-Fadiga):** Elevação rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `pacman/yay/paru -S*`, `systemctl` de sistema) emite decisão `ask`, permitindo aprovação única com persistência via **"Always Allow"**.

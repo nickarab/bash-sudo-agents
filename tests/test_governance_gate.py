@@ -1,20 +1,22 @@
 """
-test_governance_gate.py — Suíte de testes para governance-gate.py (v4.1)
+test_governance_gate.py — Suíte de testes para governance-gate.py (v4.4.0)
 
 Cobre todos os vetores de bypass identificados na auditoria:
 - Command injection no wrapper de cache
 - Path traversal em TargetFile
-- Variantes de sudo / run0 / pkexec / doas / su
+- Variantes de sudo / sudoedit / run0 / pkexec / doas / su
 - rm -rf /*, find -delete, shred, dd
 - Re-validação de overwrite
 - Limite 3X de rejeições (RULE-10)
 - Cache key com LANG/LC_ALL
-- Assinatura HMAC-SHA256 no cache
 - Permissões 0o700 no diretório de cache
+- Taxonomia anti-fadiga: privilégio rotineiro = ask, energia = force_ask (v4.4.0)
+- RULE-05 semântica (ordem de flags, --recursive, modos world-writable)
+- RULE-12 endurecida (dd/rsync/tar/ln, hooks.json global e workspace)
+- RULE-01: leitura de monitores é livre, escrita retém
 """
 
 import hashlib
-import hmac
 import importlib.util
 import json
 import os
@@ -44,7 +46,6 @@ def tmp_home(tmp_path):
     orig_home = gg.HOME
     orig_cache = gg.CACHE_DIR
     orig_rejection = gg.REJECTION_STATE_FILE
-    orig_hmac = gg.HMAC_SECRET_FILE
 
     fake_home = tmp_path / "home"
     fake_home.mkdir()
@@ -53,14 +54,12 @@ def tmp_home(tmp_path):
     gg.SECURITY_DIR = fake_home / ".gemini" / "antigravity" / "scratch" / "security"
     gg.CACHE_DIR = fake_home / ".cache" / "antigravity" / "bash_agents"
     gg.REJECTION_STATE_FILE = gg.CACHE_DIR / "rejection_state.json"
-    gg.HMAC_SECRET_FILE = gg.CACHE_DIR / ".hmac_secret"
 
     yield fake_home
 
     gg.HOME = orig_home
     gg.CACHE_DIR = orig_cache
     gg.REJECTION_STATE_FILE = orig_rejection
-    gg.HMAC_SECRET_FILE = orig_hmac
 
 
 def run_gate(cmd: str, target: str = "", cwd: str | None = None, env: dict | None = None) -> dict:
@@ -475,35 +474,6 @@ class TestCacheKeyEnv:
 
 
 # ---------------------------------------------------------------------------
-# 8. HMAC-SHA256 assinatura de cache (Seção 5.4)
-# ---------------------------------------------------------------------------
-
-class TestCacheHMAC:
-    """Verifica assinatura e verificação de cache."""
-
-    def test_sign_and_verify(self):
-        """Assinar e verificar uma entrada de cache."""
-        secret = b"test-secret"
-        payload = {"cmd": "lscpu", "output": "CPU info", "ts": 12345}
-        sig = gg._sign_cache_entry(payload, secret)
-        assert gg._verify_cache_signature(payload, sig, secret) is True
-
-    def test_wrong_signature_rejected(self):
-        """Assinatura incorreta é rejeitada."""
-        secret = b"test-secret"
-        payload = {"cmd": "lscpu", "output": "CPU info", "ts": 12345}
-        sig = gg._sign_cache_entry(payload, secret)
-        # Modificar payload
-        payload_tampered = {"cmd": "lscpu", "output": "TAMPERED", "ts": 12345}
-        assert gg._verify_cache_signature(payload_tampered, sig, secret) is False
-
-    def test_hmac_compare_digest_used(self):
-        """Usa hmac.compare_digest para evitar timing attack."""
-        # Este teste apenas garante que a função existe e é usada
-        assert hasattr(hmac, "compare_digest")
-
-
-# ---------------------------------------------------------------------------
 # 9. Permissões do diretório de cache (Quick Win #7)
 # ---------------------------------------------------------------------------
 
@@ -516,14 +486,6 @@ class TestCachePermissions:
         os.chmod(gg.CACHE_DIR, 0o700)
         mode = gg.CACHE_DIR.stat().st_mode & 0o777
         assert mode == 0o700
-
-    def test_hmac_secret_file_600(self, tmp_home):
-        """O arquivo de segredo HMAC tem 0o600."""
-        gg.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        gg.HMAC_SECRET_FILE.write_bytes(b"secret")
-        os.chmod(gg.HMAC_SECRET_FILE, 0o600)
-        mode = gg.HMAC_SECRET_FILE.stat().st_mode & 0o777
-        assert mode == 0o600
 
 
 # ---------------------------------------------------------------------------
@@ -545,17 +507,17 @@ class TestIntegrationSubprocess:
         result = run_gate("rm -rf /", cwd=str(tmp_home))
         assert result.get("decision") == "deny"
 
-    def test_force_ask_sudo(self, tmp_home, monkeypatch):
-        """sudo força ask via subprocesso."""
+    def test_ask_sudo(self, tmp_home, monkeypatch):
+        """sudo emite ask (respeita Always Allow) via subprocesso."""
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate("sudo apt update", cwd=str(tmp_home))
-        assert result.get("decision") == "force_ask"
+        assert result.get("decision") == "ask"
 
-    def test_force_ask_run0(self, tmp_home, monkeypatch):
-        """run0 força ask via subprocesso."""
+    def test_ask_run0(self, tmp_home, monkeypatch):
+        """run0 emite ask via subprocesso."""
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate("run0 systemctl restart nginx", cwd=str(tmp_home))
-        assert result.get("decision") == "force_ask"
+        assert result.get("decision") == "ask"
 
     def test_path_traversal_blocked(self, tmp_home, monkeypatch):
         """Path traversal em TargetFile é bloqueado."""
@@ -798,10 +760,10 @@ class TestRejectionKey:
         k2 = gg._rejection_key("rm -rf /", "/home/user", now=now + 3600)
         assert k1 != k2
 
-    def test_force_ask_does_not_increment(self, tmp_home, monkeypatch):
+    def test_ask_does_not_increment(self, tmp_home, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate("sudo apt update", cwd=str(tmp_home))
-        assert result.get("decision") == "force_ask"
+        assert result.get("decision") == "ask"
         state_file = tmp_home / ".cache" / "antigravity" / "bash_agents" / "rejection_state.json"
         assert not state_file.exists() or json.loads(state_file.read_text()) == {}
 
@@ -815,31 +777,12 @@ class TestRejectionKey:
 
 
 # ---------------------------------------------------------------------------
-# 18. HMAC: sem fallback estático (v4.3.0)
-# ---------------------------------------------------------------------------
-
-class TestHMACHardening:
-    def test_no_static_fallback_secret(self, tmp_home, monkeypatch):
-        fake = tmp_home / "not_a_dir"
-        fake.write_text("x")  # arquivo no lugar do diretório força falha de mkdir
-        monkeypatch.setattr(gg, "CACHE_DIR", fake)
-        monkeypatch.setattr(gg, "HMAC_SECRET_FILE", fake / ".hmac_secret")
-        secret = gg._load_or_create_hmac_secret()
-        assert isinstance(secret, bytes)
-        assert len(secret) == 32
-        assert secret != b"default-secret-change-me"
-
-
-# ---------------------------------------------------------------------------
-# 19. Contrato de cwd e failsafe (v4.3.0)
+# 18. Contrato de cwd e failsafe (v4.3.0)
 # ---------------------------------------------------------------------------
 
 class TestCwdContractAndFailsafe:
     def test_top_level_cwd_honored(self, tmp_home, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_home))
-        # cwd no topo (contrato documentado no README), sem Cwd em toolCall.args.
-        # Se o gate ignorasse o cwd de topo, cairia no HOME (tmp) e permitiria;
-        # lendo o cwd de topo, `../` resolve para /home e é vetado.
         payload = {
             "toolCall": {"name": "run_command", "args": {"CommandLine": "rm -rf ../"}},
             "cwd": "/home/user",
@@ -851,3 +794,112 @@ class TestCwdContractAndFailsafe:
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate_raw("not-json{")
         assert result.get("decision") == "force_ask"
+
+
+# ---------------------------------------------------------------------------
+# 19. Auditoria v4.4.0: Taxonomia anti-fadiga, energia, RULE-05 semântica,
+#     RULE-12 endurecida, leitura livre de monitores e compressor no cache
+# ---------------------------------------------------------------------------
+
+class TestV440HardeningAndAntiFatigue:
+    def test_sudoedit_and_sudo_e_ask(self):
+        for cmd in ("sudoedit /etc/fstab", "sudo -e /etc/fstab", "sudo --edit /etc/fstab"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "ask", cmd
+
+    def test_package_sync_variants_ask(self):
+        for cmd in ("yay -Syu", "paru -Syu", "pacman -Sy firefox", "pacman -Syu --noconfirm"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "ask", cmd
+
+    def test_echo_su_not_flagged(self):
+        decision, _, _ = call_audit_command(gg.parse_command("echo su"), None, Path("/home/user"))
+        assert decision == "allow"
+
+    def test_systemctl_user_trailing_flag_allowed(self):
+        decision, _, _ = call_audit_command(
+            gg.parse_command("systemctl start redshift --user"), None, Path("/home/user")
+        )
+        assert decision == "allow"
+
+    def test_power_commands_force_ask(self):
+        for cmd in (
+            "systemctl reboot",
+            "systemctl poweroff",
+            "sudo systemctl reboot",
+            "shutdown -h now",
+            "reboot",
+            "poweroff",
+            "systemctl suspend",
+            "systemctl suspend-then-hibernate",
+            "loginctl lock-session",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "force_ask", cmd
+
+    def test_systemctl_restart_display_manager_denied(self):
+        for cmd in ("systemctl restart sddm", "systemctl restart gdm"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_semantic_perm_abuse_denied(self):
+        for cmd in (
+            "chmod 777 -R /etc",
+            "chmod -R a+w /usr",
+            "chmod -R o+w /var",
+            "chown --recursive root /etc",
+            "chmod -R 755 /etc",
+            "sudo chmod 777 -R /etc",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_safe_perm_commands_allowed(self):
+        for cmd in ("chmod -R 755 ~/proj", "chmod 777 /tmp/x", "chown -R user:user ~/proj"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd
+
+    def test_gov_hardening_denied(self):
+        for cmd in (
+            "dd if=~/i of=/home/user/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py",
+            "sudo rm /home/user/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py",
+            "rsync -a x/ ~/.gemini/config/plugins/bash-sudo-agents/",
+            "echo x > ~/.gemini/config/hooks.json",
+            "echo x > .agents/hooks.json",
+            "tar -xf a.tar -C ~/.gemini/config/plugins/bash-sudo-agents/",
+            "ln -sf /tmp/x ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_gov_read_with_stderr_redirect_allowed(self):
+        decision, _, _ = call_audit_command(
+            gg.parse_command("ls ~/.gemini/config/plugins/bash-sudo-agents/ 2>&1"),
+            None,
+            Path("/home/user"),
+        )
+        assert decision == "allow"
+
+    def test_monitors_read_allowed_write_force_ask(self):
+        for cmd in (
+            "cat ~/.config/hypr/monitors.lua",
+            "less ~/.config/hypr/monitors.lua",
+            "grep eDP ~/.config/hypr/monitors.lua",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd
+        for cmd in (
+            "vim ~/.config/hypr/monitors.lua",
+            "sed -i 's/a/b/' ~/.config/hypr/monitors.lua",
+            "echo x > ~/.config/hypr/monitors.lua",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "force_ask", cmd
+
+    def test_pacman_search_cache_wrap_includes_limiter(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate("pacman -Ss firefox", cwd=str(tmp_home))
+        assert result.get("decision") == "allow"
+        ow = result.get("overwrite", {}).get("CommandLine", "")
+        assert "head -n 25" in ow and "tee" in ow
+

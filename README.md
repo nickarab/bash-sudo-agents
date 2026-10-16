@@ -1,14 +1,14 @@
 <div align="center">
 
 # 🛡️ Antigravity Linux Governance
-### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.3.0)*
+### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.4.0)*
 
 [![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20Governance-blueviolet?style=for-the-badge&logo=diagramsdotnet)](https://github.com/nickarab/bash-sudo-agents)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Wayland%20%7C%20Hyprland-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/nickarab/bash-sudo-agents)
-[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.3.0-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
+[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.4.0-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
 [![Runtime Gate](https://img.shields.io/badge/Runtime%20Gate-Python%20PreToolUse-darkgreen?style=for-the-badge&logo=python)](https://github.com/nickarab/bash-sudo-agents)
 [![Optimizer](https://img.shields.io/badge/Tokens-Auto--Compressor%20%2B%20Cache-blue?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
-[![Tests](https://img.shields.io/badge/Tests-108%2F108%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
+[![Tests](https://img.shields.io/badge/Tests-183%2F183%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
 [![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Pip%20(Pure%20Stdlib)-orange?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
 
 <p align="center">
@@ -30,8 +30,8 @@
 <table>
   <tr>
     <td width="50%">
-      <h3>🛡️ Dupla Barreira & Separação de Poderes</h3>
-      O operador de terminal (<code>@agente-bash</code>) é orientado por princípios estritos. Toda elevação é fisicamente fiscalizada no sistema pelo motor Python <code>governance-gate.py</code>, sob governança legislativa do <code>@agente-sudo-policy</code>.
+      <h3>🛡️ Dupla Barreira & Taxonomia Anti-Fadiga</h3>
+      O operador de terminal (<code>@agente-bash</code>) é orientado por princípios estritos. Elevação rotineira usa <code>ask</code> (respeitando <i>Always Allow</i>), alto impacto usa <code>force_ask</code> e destruição real recebe <code>deny</code> via <code>governance-gate.py</code>.
     </td>
     <td width="50%">
       <h3>⚡ Auto-Compressor Sintático de Tokens</h3>
@@ -40,8 +40,8 @@
   </tr>
   <tr>
     <td width="50%">
-      <h3>💾 Cache Local com TTL</h3>
-      Comandos estáticos de diagnóstico (<code>lscpu</code>, <code>uname</code>, <code>lspci</code>) são cacheados localmente com TTL configurável, eliminando re-execuções e saídas duplicadas no histórico do chat.
+      <h3>💾 Cache Local com TTL (Isolado 0700)</h3>
+      Comandos estáticos de diagnóstico (<code>lscpu</code>, <code>uname</code>, <code>lspci</code>, <code>pacman -Ss</code> já comprimido) são cacheados localmente com TTL configurável em diretório restrito (<code>0700</code>).
     </td>
     <td width="50%">
       <h3>🔒 Zero-Pip & Failsafe Universal</h3>
@@ -63,15 +63,17 @@ flowchart TD
         Bash -->|"2. Disparo de Operação"| Gate{"🚧 governance-gate.py<br/>(Motor Python PreToolUse)"}
         
         Gate -->|"Cache Hit (TTL Válido)"| CacheRead["Leitura Instantânea de Cache"]
-        Gate -->|"allow: seguro / otimizado"| OSExec["Execução no Linux"]
-        Gate -->|"force_ask: sudo / privilégios / monitores"| PromptUser["Card Nativo de Senha / Confirmação"]
-        Gate -->|"deny: rm -rf raiz / destruição vital"| HardBlock["🛑 Veto Físico Imediato no SO"]
+        Gate -->|"allow: seguro / leitura livre"| OSExec["Execução no Linux"]
+        Gate -->|"ask: sudo / privilégio rotineiro"| AskGrant["Card Nativo c/ Always Allow"]
+        Gate -->|"force_ask: disco / monitores / energia"| PromptUser["Confirmação Explícita Sempre"]
+        Gate -->|"deny: rm -rf raiz / chmod 777 -R / gov"| HardBlock["🛑 Veto Físico Imediato no SO"]
         
         HardBlock -.->|"Veto / Erro"| LoopAdapt["Loop de Auto-Adaptação (até 3x)"]
         LoopAdapt --> Bash
         LoopAdapt -->|"Teto de 3 Rejeições"| Escalation["🛑 Relatório Estruturado de Escalação Humana"]
         Escalation --> User
         
+        AskGrant -->|"Aprovado / Always Allow"| OSExec
         PromptUser -->|"Aprovado pelo Usuário"| OSExec
         CacheRead --> OSExec
     end
@@ -93,13 +95,13 @@ O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens an
 * **`journalctl`** ➔ Adiciona automaticamente `--no-pager -n 35`.
 * **`dmesg`** ➔ Adiciona automaticamente `--color=never | tail -n 35`.
 * **`git log`** ➔ Adiciona automaticamente `-n 15`.
-* **`pacman -Ss` / `yay -Ss`** ➔ Adiciona automaticamente `| head -n 25`.
+* **`pacman -Ss` / `yay -Ss` / `paru -Ss`** ➔ Embute `| head -n 25` diretamente dentro do wrapper de cache.
 * **Blindagem Sintática:** Se a IA já tiver configurado redirecionamentos (`>`, `>>`) ou pipes (`|`), o compressor não interfere, garantindo integridade sintática.
 
 ### 2. Cache com TTL (Time-To-Live)
-* **Local:** `~/.cache/antigravity/bash_agents/`
+* **Local:** `~/.cache/antigravity/bash_agents/` (permissão estrita `0700`)
 * **Hardware/Distro Estático** (`lscpu`, `uname -a`, `lspci`, `lsusb`, `cat /etc/os-release`): TTL de **1 hora**.
-* **Buscas em Repositórios** (`pacman -Ss`, `yay -Ss`): TTL de **10 minutos**.
+* **Buscas em Repositórios** (`pacman -Ss`, `yay -Ss`): TTL de **10 minutos** (armazena a saída já truncada em 25 linhas).
 * **Comandos Voláteis** (`git status`, `systemctl`, `ps`, testes): **TTL = 0** (nunca cacheados).
 
 ---
@@ -109,7 +111,7 @@ O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens an
 | Componente | Identidade | Nível de Acesso | Diretiva Primária |
 | :--- | :--- | :--- | :--- |
 | **`@agente-bash`** | **Operador de Terminal** (LLM) | Leitura irrestrita do SO / Shell sem privilégios | Executa diagnósticos ágeis, compacta saídas na fonte e conduz comandos no terminal. Mantém sessão contínua (*Modo Sticky*). |
-| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica fisicamente as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de privilégios (`force_ask`), auto-compressão e cache com TTL. |
+| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica fisicamente as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de alto impacto (`force_ask`), elevação com *Always Allow* (`ask`), auto-compressão e cache com TTL. |
 | **`@agente-sudo-policy`** | **Gestor Constitucional** (LLM) | Monopólio legislativo exclusivo | Detém o monopólio exclusivo de legislar sobre as regras em `policies.json`, `meta_policies.json`, `AGENTS.md` e `hooks.json`. Segue o *Rito Proposta-Primeiro*. |
 
 ---
@@ -124,17 +126,18 @@ O motor `governance-gate.py` opera como barreira física interceptando cada cham
   "toolCall": {
     "name": "run_command",
     "args": {
-      "CommandLine": "systemctl restart bluetooth.service"
+      "CommandLine": "systemctl restart bluetooth.service",
+      "Cwd": "/home/user"
     }
   },
-  "cwd": "/home/user"
+  "stepIdx": 1
 }
 ```
 
 ### 📤 Saída (Stdout: Deliberação Física do Motor)
 ```json
 {
-  "decision": "allow | deny | force_ask",
+  "decision": "allow | ask | force_ask | deny",
   "reason": "Justificativa constitucional ou aviso de contenção física",
   "overwrite": {
     "CommandLine": "comando otimizado ou redirecionado para cache"
@@ -154,21 +157,21 @@ As diretrizes do sistema residem em [`security/policies.json`](security/policies
 
 | Código | Nome da Regra | Severidade | Efeito Prático | Fiscalização |
 | :---: | :--- | :---: | :--- | :---: |
-| **`RULE-01`** | **Soberania do Display** | `CRITICAL` | Veto a alterações em `monitors.lua` ou resoluções sem prévia confirmação humana. | **Hook `force_ask`** |
+| **`RULE-01`** | **Soberania do Display** | `CRITICAL` | Leitura de `monitors.lua` é livre (`allow`); edição/escrita exige confirmação humana. | **Hook `force_ask`** |
 | **`RULE-02`** | **Anti-Destruição** | `CRITICAL` | Bloqueio de deleção recursiva indiscriminada na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, etc.). | **Hook `deny` sumário** |
-| **`RULE-03`** | **Operações de Disco** | `CRITICAL` | Comandos `mkfs`, `fdisk`, `dd` exigem alvo explícito e blindam partições ativas (`/`, `/boot`). | `governance-gate` |
+| **`RULE-03`** | **Operações de Disco** | `CRITICAL` | Comandos `mkfs`, `fdisk`, `cryptsetup`, `dd` exigem alvo explícito e blindam partições ativas (`/`, `/boot`). | **Hook `force_ask`** |
 | **`RULE-04`** | **Escopo Estrito** | `HIGH` | O comando com privilégio deve ater-se exclusivamente à necessidade da tarefa solicitada. | `governance-gate` |
-| **`RULE-05`** | **Preservação de Permissões** | `HIGH` | Veto a permissões globais abusivas (`chmod -R 777` ou `chown -R` no sistema). | `governance-gate` |
+| **`RULE-05`** | **Preservação de Permissões** | `HIGH` | Veto semântico a permissões recursivas abusivas (`chmod -R 777`, `chmod 777 -R`, `a+w` ou `chown -R` no sistema). | **Hook `deny`** |
 | **`RULE-06`** | **Sigilo de Credenciais** | `HIGH` | Enforce de `HISTFILE=/dev/null`. Descontinuação e veto permanente a runners com senhas locais. | **Hook `deny`** |
-| **`RULE-07`** | **Anti-Crash** | `HIGH` | Proibido matar processos que derrubem a sessão gráfica ativa (Hyprland, Wayland, SDDM, PID 1). | `governance-gate` |
+| **`RULE-07`** | **Anti-Crash & Energia** | `HIGH` | Proibido derrubar/reiniciar sessão gráfica (`deny`); `reboot`/`poweroff`/`suspend` exigem confirmação (`force_ask`). | **Hook `deny` / `force_ask`** |
 | **`RULE-08`** | **Mitigação Ativa** | `MEDIUM` | Remodelação autônoma orientada pelo parecer técnico de veto sem transferir ruído ao usuário. | Loop Auto-Adaptação |
 | **`RULE-09`** | **Franquia de Diagnóstico** | `INFO` | Acesso instantâneo e livre para ler métricas, sensores, hardware e logs da máquina. | Execução Livre |
 | **`RULE-10`** | **Regra 3X (Teto de Recusas)** | `CRITICAL` | Limite de 3 rejeições consecutivas. Na 3ª recusa, suspensão imediata e alerta de escalação. | Loop Auto-Adaptação (3X) |
-| **`RULE-11`** | **Monopólio Legislativo** | `CRITICAL` | Exclusividade legislativa do `@agente-sudo-policy`. Veto de escrita nos caminhos de governança. | **Hook `force_ask`** |
-| **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos mantidos em `chmod 444`, protegidos no runtime pelo hook `PreToolUse` (`governance-gate.py`). | **Hook PreToolUse** |
+| **`RULE-11`** | **Monopólio Legislativo** | `CRITICAL` | Exclusividade legislativa do `@agente-sudo-policy`. Veto de escrita nos caminhos de governança. | **Hook `deny`** |
+| **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos e `hooks.json` mantidos em `chmod 444`, protegidos por `deny` no hook `PreToolUse` (`governance-gate.py`). | **Hook `deny`** |
 | **`RULE-13`** | **Modo Sticky Automático** | `MANDATORY` | O `@agente-bash` assume a sessão contínua até saída explícita ou invocação de outro agente. | Sessão Contínua |
 | **`RULE-14`** | **Rito Proposta-Primeiro** | `CRITICAL` | Propostas de regras geram apenas texto no chat; modificações em disco exigem autorização expressa. | **Hook + Política** |
-| **`RULE-15`** | **Taxonomia Privilegiada** | `HIGH` | Gatilhos obrigatórios de retenção: `sudo`, `doas`, `pkexec`, `su`, `yay/paru -S`, `mount`, etc. | **Hook `force_ask`** |
+| **`RULE-15`** | **Taxonomia Privilegiada** | `HIGH` | Elevação rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `yay/pacman -S*`) com suporte a *Always Allow*. | **Hook `ask`** |
 
 </details>
 
@@ -198,14 +201,14 @@ cd bash-sudo-agents
 
 ## 🧪 Suíte de Testes e Validação
 
-O framework conta com **108 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, caminhos de governança, permissões e compressão:
+O framework conta com **183 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, taxonomia `ask`/`force_ask`/`deny`, caminhos de governança, permissões semânticas e compressão:
 
 ```bash
-# 1. Executar verificador rápido de bypass e regressão (Zero-Pip / Stdlib pura)
+# 1. Executar verificador rápido de bypass e regressão (83 testes Zero-Pip / Stdlib pura)
 python3 tests/verify_fixes.py
 
-# 2. Executar suíte completa de testes unitários (62 testes via pytest)
-uv run --with pytest pytest tests/test_governance_gate.py
+# 2. Executar suíte completa de testes unitários (100 testes via pytest)
+pytest tests/test_governance_gate.py
 ```
 
 ---
@@ -217,14 +220,14 @@ bash-sudo-agents/
 ├── 📄 .gitignore                  # Proteção contra vazamento de arquivos locais
 ├── ⚙️ install.sh                  # Instalador universal automatizado com backup atômico
 ├── 📘 README.md                   # Esta documentação executiva
-├── 🧪 tests/                      # Suíte de testes automatizados (108 verificações)
-│   ├── test_governance_gate.py    # 62 testes unitários (pytest)
-│   └── verify_fixes.py            # 46 testes de segurança sem dependências externas
+├── 🧪 tests/                      # Suíte de testes automatizados (183 verificações)
+│   ├── test_governance_gate.py    # 100 testes unitários (pytest)
+│   └── verify_fixes.py            # 83 testes de segurança sem dependências externas
 ├── 🧩 plugin/
-│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.3.0)
+│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.4.0)
 │   ├── hooks.json                 # Registro do hook chamando python3 ./hooks/governance-gate.py
 │   ├── hooks/
-│   │   └── governance-gate.py     # 🌟 Motor Python: Segurança, HMAC, Cache e Auto-Compressor
+│   │   └── governance-gate.py     # 🌟 Motor Python: Firewall Semântico, Cache TTL e Auto-Compressor
 │   ├── rules/
 │   │   └── AGENTS.md              # Mini Constituição injetada no prompt do sistema
 │   └── skills/

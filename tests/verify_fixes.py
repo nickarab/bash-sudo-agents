@@ -80,7 +80,7 @@ def main():
         # Novos casos de regressão (v4.2.1) — correções C-1, C-2, H-4, H-6
         results += [check("systemctl stop --user hyprland", "systemctl stop --user hyprland", "deny")]
         results += [check("chown -R user:user /bin", "chown -R user:user /bin", "deny")]
-        results += [check("$(which sudo) ls /root", "$(which sudo) ls /root", "force_ask")]
+        results += [check("$(which sudo) ls /root", "$(which sudo) ls /root", "ask")]
         # H-6: cat /etc/passwd não deve ser cacheado (sem overwrite com tee)
         r = run_gate("cat /etc/passwd")
         ow = r.get("overwrite", {})
@@ -133,31 +133,55 @@ def main():
 
         # --- RULE-07: serviços críticos (deny) ---
         results += [check("systemctl stop sddm", "systemctl stop sddm", "deny")]
+        results += [check("systemctl restart sddm", "systemctl restart sddm", "deny")]
         results += [check("pkill hyprland", "pkill hyprland", "deny")]
         results += [check("kill -9 1", "kill -9 1", "deny")]
 
-        # --- RULE-05: permissões (deny) ---
-        results += [check("chmod -R 777 /usr", "chmod -R 777 /usr", "deny")]
-        results += [check("chown -R root /etc", "chown -R root /etc", "deny")]
+        # --- RULE-07 (energia/sessão, v4.4.0): force_ask ---
+        results += [check("systemctl reboot", "systemctl reboot", "force_ask")]
+        results += [check("shutdown -h now", "shutdown -h now", "force_ask")]
+        results += [check("loginctl lock-session", "loginctl lock-session", "force_ask")]
 
-        # --- RULE-01: monitores (force_ask) ---
+        # --- RULE-05: permissões semânticas (deny) ---
+        results += [check("chmod -R 777 /usr", "chmod -R 777 /usr", "deny")]
+        results += [check("chmod 777 -R /etc", "chmod 777 -R /etc", "deny")]
+        results += [check("chmod -R a+w /usr", "chmod -R a+w /usr", "deny")]
+        results += [check("chown -R root /etc", "chown -R root /etc", "deny")]
+        results += [check("chown --recursive root /etc", "chown --recursive root /etc", "deny")]
+
+        # --- RULE-01: monitores (leitura allow, escrita force_ask) ---
+        results += [check("cat ~/.config/hypr/monitors.lua", "cat ~/.config/hypr/monitors.lua", "allow")]
         results += [check("vim ~/.config/hypr/monitors.lua", "vim ~/.config/hypr/monitors.lua", "force_ask")]
 
         # --- RULE-03: disco (force_ask) ---
         results += [check("mkfs.ext4 /dev/sdb1", "mkfs.ext4 /dev/sdb1", "force_ask")]
         results += [check("fdisk /dev/sdb", "fdisk /dev/sdb", "force_ask")]
         results += [check("mount /dev/sdb1 /mnt", "mount /dev/sdb1 /mnt", "force_ask")]
+        results += [check("cryptsetup luksFormat /dev/sdb", "cryptsetup luksFormat /dev/sdb", "force_ask")]
 
-        # --- RULE-15: privilégios (force_ask) ---
-        results += [check("sudo apt update", "sudo apt update", "force_ask")]
-        results += [check("run0 systemctl restart nginx", "run0 systemctl restart nginx", "force_ask")]
-        results += [check("yay -S firefox", "yay -S firefox", "force_ask")]
+        # --- RULE-15: privilégios rotineiros (ask — respeita Always Allow) ---
+        results += [check("sudo apt update", "sudo apt update", "ask")]
+        results += [check("run0 systemctl restart nginx", "run0 systemctl restart nginx", "ask")]
+        results += [check("yay -S firefox", "yay -S firefox", "ask")]
+        results += [check("yay -Syu", "yay -Syu", "ask")]
+        results += [check("pacman -Sy firefox", "pacman -Sy firefox", "ask")]
+        results += [check("sudoedit /etc/fstab", "sudoedit /etc/fstab", "ask")]
+        results += [check("sudo -e /etc/fstab", "sudo -e /etc/fstab", "ask")]
+        results += [check("echo su (sem falso positivo)", "echo su", "allow")]
 
         # --- RULE-12: governança (deny absoluto em arquivos de governança) ---
         results += [check("chmod 777 ~/.gemini/config/plugins/bash-sudo-agents/AGENTS.md",
                           "chmod 777 ~/.gemini/config/plugins/bash-sudo-agents/AGENTS.md", "deny")]
         results += [check("rm ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py",
                           "rm ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py", "deny")]
+        results += [check("sudo rm ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py",
+                          "sudo rm ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py", "deny")]
+        results += [check("dd of=governance-gate.py",
+                          "dd if=~/i of=~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py", "deny")]
+        results += [check("echo x > ~/.gemini/config/hooks.json",
+                          "echo x > ~/.gemini/config/hooks.json", "deny")]
+        results += [check("ls governança 2>&1 (leitura com redirect fd)",
+                          "ls ~/.gemini/config/plugins/bash-sudo-agents/ 2>&1", "allow")]
 
         # --- Allow (comandos seguros) ---
         results += [check("lscpu", "lscpu", "allow")]

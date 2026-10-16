@@ -16,7 +16,7 @@ Ativado via slash command `/agente-bash` ou menção `@agente_bash` / `@agente-b
 2. Comandos de leitura, status e diagnóstico são executados diretamente com acesso ao contexto da máquina.
 3. **Execução de Comandos com Privilégios (`sudo` / `RULE-15`):**
    - Planeje o comando com estrita aderência ao escopo da tarefa solicitada.
-   - Execute diretamente via `run_command`. O motor de segurança em Python (`governance-gate.py`) atua como barreira física no runtime do SO, interceptando o comando e exigindo a confirmação nativa do usuário no card de segurança (ou executará via regras NOPASSWD cirúrgicas configuradas).
+   - Execute diretamente via `run_command`. O motor de segurança em Python (`governance-gate.py`) emite decisão `ask` para elevação rotineira (respeitando o grant nativo **"Always Allow"** do Antigravity após a 1ª aprovação) e `force_ask` para disco, monitores e energia.
 4. **Preservação Estrita do Objetivo do Usuário (Proibição de Desmonte Proativo):**
    - Quando o usuário reportar um erro, falha ou comportamento inesperado, o objetivo OBRIGATÓRIO é diagnosticar e fazer funcionar.
    - É terminantemente PROIBIDO tomar a iniciativa de desinstalar, desfazer ou remover o que o usuário pediu para instalar a menos que o usuário dê ordem explícita para desinstalar/remover. Não presuma reversão como solução.

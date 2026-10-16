@@ -1,14 +1,16 @@
 {
   "system": "Antigravity Linux Governance Framework",
-  "version": "4.0",
-  "architecture": "Engenharia Sincera: Operador LLM + Guardião de Runtime em Python + Gestor Legislativo",
+  "version": "4.4.0",
+  "architecture": "Engenharia Sincera: Agentes Nativos (plugin/agents/*.md) + Guardião de Runtime em Python + Gestor Legislativo",
   "components": [
     {
-      "name": "agente_bash",
+      "name": "agente-bash",
       "call_tag": "@agente-bash",
-      "type": "llm_agent",
+      "type": "native_agent",
+      "file": "plugin/agents/agente-bash.md",
+      "skill_file": "plugin/skills/agente-bash/SKILL.md",
       "role": "Operador de terminal e automações",
-      "description": "Agente responsável por interagir diretamente com o usuário para planejar, diagnosticar e executar tarefas de terminal/bash.",
+      "description": "Agente nativo (mainAgent + subagent) responsável por interagir diretamente com o usuário ou como subagente para planejar, diagnosticar e executar tarefas de terminal/bash.",
       "enable_write_tools": true,
       "enable_subagent_tools": true
     },
@@ -20,11 +22,13 @@
       "file": "plugin/hooks/governance-gate.py"
     },
     {
-      "name": "agente_sudo_policy",
+      "name": "agente-sudo-policy",
       "call_tag": "@agente-sudo-policy",
-      "type": "llm_agent",
+      "type": "native_agent",
+      "file": "plugin/agents/agente-sudo-policy.md",
+      "skill_file": "plugin/skills/agente-sudo-policy/SKILL.md",
       "role": "Gestor de políticas e governança",
-      "description": "Agente legislador chamado diretamente pelo usuário para consultar, criar, atualizar ou revogar regras em policies.json e AGENTS.md.",
+      "description": "Agente legislador nativo (mainAgent + subagent) chamado diretamente pelo usuário para consultar, criar, atualizar ou revogar regras em policies.json, AGENTS.md, SKILL.md, agents/*.md e hooks.json.",
       "enable_write_tools": true,
       "enable_subagent_tools": false
     }

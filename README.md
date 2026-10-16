@@ -226,6 +226,9 @@ bash-sudo-agents/
 ├── 🧩 plugin/
 │   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.4.0)
 │   ├── hooks.json                 # Registro do hook chamando python3 ./hooks/governance-gate.py
+│   ├── agents/                    # Agentes nativos declarados no ecossistema Antigravity
+│   │   ├── agente-bash.md         # Agente nativo: Operador de Terminal
+│   │   └── agente-sudo-policy.md  # Agente nativo: Gestor Constitucional
 │   ├── hooks/
 │   │   └── governance-gate.py     # 🌟 Motor Python: Firewall Semântico, Cache TTL e Auto-Compressor
 │   ├── rules/

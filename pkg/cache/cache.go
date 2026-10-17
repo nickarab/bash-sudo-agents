@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/policy"
-	"github.com/nickarab/bash-sudo-agents/pkg/shparse"
+	"governance-gate/pkg/policy"
+	"governance-gate/pkg/shparse"
 )
 
 // FormatVersion invalida globalmente o cache quando o layout muda.

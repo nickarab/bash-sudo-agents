@@ -1,4 +1,4 @@
-module github.com/nickarab/bash-sudo-agents
+module governance-gate
 
 go 1.22
 

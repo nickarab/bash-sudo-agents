@@ -3,9 +3,9 @@ package evaluator
 import (
 	"strings"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/pathx"
-	"github.com/nickarab/bash-sudo-agents/pkg/policy"
-	"github.com/nickarab/bash-sudo-agents/pkg/shparse"
+	"governance-gate/pkg/pathx"
+	"governance-gate/pkg/policy"
+	"governance-gate/pkg/shparse"
 )
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/policy"
+	"governance-gate/pkg/policy"
 )
 
 // Kind descreve o resultado da resolução de um caminho.

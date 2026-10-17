@@ -8,10 +8,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/contract"
-	"github.com/nickarab/bash-sudo-agents/pkg/pathx"
-	"github.com/nickarab/bash-sudo-agents/pkg/policy"
-	"github.com/nickarab/bash-sudo-agents/pkg/shparse"
+	"governance-gate/pkg/contract"
+	"governance-gate/pkg/pathx"
+	"governance-gate/pkg/policy"
+	"governance-gate/pkg/shparse"
 )
 
 const maxRecursion = 8

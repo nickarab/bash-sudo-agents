@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/contract"
+	"governance-gate/pkg/contract"
 )
 
 func TestSymlinkToVitalDenied(t *testing.T) {

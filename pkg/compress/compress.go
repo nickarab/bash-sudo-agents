@@ -6,7 +6,7 @@ package compress
 import (
 	"regexp"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/shparse"
+	"governance-gate/pkg/shparse"
 )
 
 var (

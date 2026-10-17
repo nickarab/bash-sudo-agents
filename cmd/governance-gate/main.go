@@ -17,14 +17,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nickarab/bash-sudo-agents/pkg/audit"
-	"github.com/nickarab/bash-sudo-agents/pkg/cache"
-	"github.com/nickarab/bash-sudo-agents/pkg/compress"
-	"github.com/nickarab/bash-sudo-agents/pkg/contract"
-	"github.com/nickarab/bash-sudo-agents/pkg/evaluator"
-	"github.com/nickarab/bash-sudo-agents/pkg/policy"
-	"github.com/nickarab/bash-sudo-agents/pkg/shparse"
-	"github.com/nickarab/bash-sudo-agents/pkg/state"
+	"governance-gate/pkg/audit"
+	"governance-gate/pkg/cache"
+	"governance-gate/pkg/compress"
+	"governance-gate/pkg/contract"
+	"governance-gate/pkg/evaluator"
+	"governance-gate/pkg/policy"
+	"governance-gate/pkg/shparse"
+	"governance-gate/pkg/state"
 )
 
 // Version é a versão do motor (runtime Go nativo).

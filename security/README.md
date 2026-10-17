@@ -5,7 +5,7 @@ Este diretório contém as políticas e manifestos centrais do ecossistema de ag
 ## Componentes
 
 1. **`policies.json` (v4.0)**:
-   - Políticas constitucionais ativas aplicadas fisicamente no runtime pelo motor Python `governance-gate.py` (`PreToolUse`) sobre o `@agente-bash`.
+   - Políticas constitucionais ativas aplicadas em runtime pelo motor Python `governance-gate.py` (`PreToolUse`) sobre o `@agente-bash` (camada de governança semântica / guardrail).
    - Gerenciado exclusivamente através do `@agente-sudo-policy`.
 
 2. **`meta_policies.json` (v4.0)**:

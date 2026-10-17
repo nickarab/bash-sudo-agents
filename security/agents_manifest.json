@@ -17,8 +17,8 @@
     {
       "name": "governance_gate_py",
       "type": "runtime_engine",
-      "role": "Motor de governança, firewall e contenção no runtime (PreToolUse)",
-      "description": "Script Python nativo executado fisicamente no nível do SO pelo Antigravity. Aplica as regras de segurança (RULE-01 a RULE-15), veto sumário a destruição, auto-compressão de saídas e cache local com TTL.",
+      "role": "Motor de governança semântica e guardrail no runtime (PreToolUse)",
+      "description": "Script Python nativo executado como hook PreToolUse pelo Antigravity. Aplica as regras de segurança (RULE-01 a RULE-15), veto sumário a destruição/mutação de caminhos vitais, auto-compressão de saídas e cache local com TTL. Guardrail para agente cooperativo — não é sandbox de isolamento.",
       "file": "plugin/hooks/governance-gate.py"
     },
     {

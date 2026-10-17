@@ -2,7 +2,7 @@
   "version": "4.0",
   "updated_by": "agente-sudo-policy",
   "title": "Mini Constituição de Segurança e Integridade do Sistema",
-  "description": "Conjunto de princípios e regras invioláveis aplicadas fisicamente no runtime pelo motor Python governance-gate.py para contenção e governança do @agente-bash.",
+  "description": "Conjunto de princípios e regras invioláveis aplicadas em runtime pelo motor Python governance-gate.py como camada de governança semântica (guardrail/policy-as-code) do @agente-bash.",
   "principles": [
     "Princípio da Mínima Intervenção: Executar apenas o estritamente necessário para cumprir a demanda.",
     "Princípio do Pensamento Crítico: Avaliar o impacto técnico e efeitos colaterais antes de aprovar qualquer execução.",

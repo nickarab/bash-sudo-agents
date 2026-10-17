@@ -5,18 +5,24 @@
 
 [![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20Governance-blueviolet?style=for-the-badge&logo=diagramsdotnet)](https://github.com/nickarab/bash-sudo-agents)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Wayland%20%7C%20Hyprland-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/nickarab/bash-sudo-agents)
-[![Security Level](https://img.shields.io/badge/Security-Constitutional%20v4.4.0-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
+[![Security Level](https://img.shields.io/badge/Governance-Semantic%20%2B%20Policy--as--Code-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
 [![Runtime Gate](https://img.shields.io/badge/Runtime%20Gate-Python%20PreToolUse-darkgreen?style=for-the-badge&logo=python)](https://github.com/nickarab/bash-sudo-agents)
 [![Optimizer](https://img.shields.io/badge/Tokens-Auto--Compressor%20%2B%20Cache-blue?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
-[![Tests](https://img.shields.io/badge/Tests-183%2F183%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
+[![Tests](https://img.shields.io/badge/Tests-224%2F224%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
 [![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Pip%20(Pure%20Stdlib)-orange?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
 
 <p align="center">
-  <b>Um framework agêntico de alto desempenho que transforma o terminal Linux em um ambiente autônomo, blindado no runtime e ultra-eficiente no consumo de tokens.</b>
+  <b>Um framework agêntico de alto desempenho que transforma o terminal Linux em um ambiente autônomo, governado no runtime e ultra-eficiente no consumo de tokens.</b>
+</p>
+
+<p align="center">
+  <b>Camada de Governança Semântica, Guardrail em Runtime e Policy-as-Code</b> — não um sandbox de isolamento de kernel.
+  <a href="#-escopo-e-limites-não-é-um-sandbox">Ver escopo e limites »</a>
 </p>
 
 [Instalação Rápida](#-instalação-express-em-nova-máquina) •
 [Arquitetura](#-arquitetura-do-sistema) •
+[Escopo & Limites](#-escopo-e-limites-não-é-um-sandbox) •
 [Otimização de Tokens & Cache](#-otimização-de-tokens--cache-local) •
 [Agentes](#-matriz-de-responsabilidades) •
 [Constituição](#-mini-constituição-de-segurança-v40)
@@ -30,7 +36,7 @@
 <table>
   <tr>
     <td width="50%">
-      <h3>🛡️ Dupla Barreira & Taxonomia Anti-Fadiga</h3>
+      <h3>🛡️ Camada de Governança Semântica & Taxonomia Anti-Fadiga</h3>
       O operador de terminal (<code>@agente-bash</code>) é orientado por princípios estritos. Elevação rotineira usa <code>ask</code> (respeitando <i>Always Allow</i>), alto impacto usa <code>force_ask</code> e destruição real recebe <code>deny</code> via <code>governance-gate.py</code>.
     </td>
     <td width="50%">
@@ -45,7 +51,17 @@
     </td>
     <td width="50%">
       <h3>🔒 Zero-Pip & Failsafe Universal</h3>
-      Construído estritamente com a biblioteca padrão do Python 3.8+ (sem necessidade de <code>pip install</code> ou <code>jq</code>). Envelopamento global com <code>try/except</code> que impede travamentos da IDE.
+      Construído estritamente com a biblioteca padrão do Python 3.8+ (sem necessidade de <code>pip install</code> ou <code>jq</code>) — anotações preguiçosas (PEP 563) mantêm PEP 604/585 compatíveis com 3.8/3.9. Envelopamento global com <code>try/except</code> que impede travamentos da IDE.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🧱 Endurecimento Semântico (v4.4.x)</h3>
+      <code>deny</code> também para mutação direta de caminhos vitais (<code>mv</code>, <code>cp</code>, <code>install</code>, <code>truncate</code>, <code>tee</code>, <code>ln</code>, <code>&gt;</code>/<code>&gt;&gt;</code>) e recursão em <code>bash -c "..."</code>. Interpretadores inline (<code>python3 -c</code>, <code>perl -e</code>) referenciando caminhos protegidos são retidos.
+    </td>
+    <td width="50%">
+      <h3>🚦 Fail-Closed & Superfície sem Aspas</h3>
+      Payload válido sem <code>CommandLine</code> reconhecível vira <code>force_ask</code> (nunca <code>allow</code> silencioso). Padrões de regex operam sobre uma superfície com strings literais removidas — sem falsos positivos em mensagens de commit — preservando substituições <code>$(...)</code> e crases.
     </td>
   </tr>
 </table>
@@ -58,7 +74,7 @@
 flowchart TD
     User(["👤 Usuário Administrador"]) <-->|"Comandos e Diagnósticos"| Bash["🖥️ @agente-bash<br/>(Operador de Terminal)"]
     
-    subgraph Sandbox["⚙️ Execução e Contenção no Runtime"]
+    subgraph Governed["⚙️ Execução e Governança no Runtime"]
         Bash -->|"1. Leitura e Diagnóstico Livre"| TermBash["Terminal Seguro: Pipes Limitadores"]
         Bash -->|"2. Disparo de Operação"| Gate{"🚧 governance-gate.py<br/>(Motor Python PreToolUse)"}
         
@@ -66,7 +82,7 @@ flowchart TD
         Gate -->|"allow: seguro / leitura livre"| OSExec["Execução no Linux"]
         Gate -->|"ask: sudo / privilégio rotineiro"| AskGrant["Card Nativo c/ Always Allow"]
         Gate -->|"force_ask: disco / monitores / energia"| PromptUser["Confirmação Explícita Sempre"]
-        Gate -->|"deny: rm -rf raiz / chmod 777 -R / gov"| HardBlock["🛑 Veto Físico Imediato no SO"]
+        Gate -->|"deny: rm -rf raiz / chmod 777 -R / gov"| HardBlock["🛑 Veto Imediato no Runtime (deny)"]
         
         HardBlock -.->|"Veto / Erro"| LoopAdapt["Loop de Auto-Adaptação (até 3x)"]
         LoopAdapt --> Bash
@@ -84,6 +100,25 @@ flowchart TD
         Policy -->|"Escrita Segura Proposta-Primeiro"| PoliciesFile["policies.json v4.0<br/>chmod 444"]
     end
 ```
+
+---
+
+## ⚠️ Escopo e Limites (não é um sandbox)
+
+Este projeto é uma **Camada de Governança Semântica / guardrail de autonomia** para agentes de LLM **cooperativos**. O objetivo é evitar acidentes, reduzir a fadiga de aprovações e economizar tokens — **não** é uma fronteira de isolamento de kernel nem um sandbox contra um agente hostil (jailbroken/injetado).
+
+**O que ele garante:**
+
+* Contenção consistente e auditável das operações de altíssimo risco (`rm -rf /`, `chmod -R 777 /etc`, formatação, energia, derrubada de sessão, edição dos arquivos de governança).
+* Taxonomia de decisão previsível (`allow` / `ask` / `force_ask` / `deny`) e registro em `audit.log`.
+* Compressão de saída na fonte e cache local com TTL.
+
+**O que ele NÃO garante:**
+
+* Isolamento de processo, usuário, sistema de arquivos ou rede. Um comando que **não** case com as heurísticas (interpretadores, binários não cobertos, `mv`/`cp` para caminhos não mapeados, execução remota) pode passar. A escrita em arquivo vital via redirecionamento com **alvo entre aspas** e o uso de interpretadores sobre caminhos não mapeados são lacunas conhecidas.
+* Proteção contra engenharia social do LLM: aprovar **"Always Allow"** em um prompt `ask` de `sudo` libera as próximas elevações daquele recurso.
+
+Se você precisa de isolamento real, combine este guardrail com `bubblewrap`/`firejail`, `systemd-run`/cgroups, usuário dedicado, montagens read-only e/ou containers.
 
 ---
 
@@ -111,14 +146,14 @@ O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens an
 | Componente | Identidade | Nível de Acesso | Diretiva Primária |
 | :--- | :--- | :--- | :--- |
 | **`@agente-bash`** | **Operador de Terminal** (LLM) | Leitura irrestrita do SO / Shell sem privilégios | Executa diagnósticos ágeis, compacta saídas na fonte e conduz comandos no terminal. Mantém sessão contínua (*Modo Sticky*). |
-| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica fisicamente as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de alto impacto (`force_ask`), elevação com *Always Allow* (`ask`), auto-compressão e cache com TTL. |
+| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica em runtime as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de alto impacto (`force_ask`), elevação com *Always Allow* (`ask`), auto-compressão e cache com TTL. Fail-closed em schema desconhecido. |
 | **`@agente-sudo-policy`** | **Gestor Constitucional** (LLM) | Monopólio legislativo exclusivo | Detém o monopólio exclusivo de legislar sobre as regras em `policies.json`, `meta_policies.json`, `AGENTS.md` e `hooks.json`. Segue o *Rito Proposta-Primeiro*. |
 
 ---
 
 ## 📡 Contrato de Runtime do Motor PreToolUse
 
-O motor `governance-gate.py` opera como barreira física interceptando cada chamada de ferramenta enviada pelo Antigravity:
+O motor `governance-gate.py` opera como camada de governança interceptando cada chamada de ferramenta enviada pelo Antigravity:
 
 ### 📥 Entrada (Stdin: Payload do Antigravity)
 ```json
@@ -134,11 +169,11 @@ O motor `governance-gate.py` opera como barreira física interceptando cada cham
 }
 ```
 
-### 📤 Saída (Stdout: Deliberação Física do Motor)
+### 📤 Saída (Stdout: Deliberação do Motor no Runtime)
 ```json
 {
   "decision": "allow | ask | force_ask | deny",
-  "reason": "Justificativa constitucional ou aviso de contenção física",
+  "reason": "Justificativa constitucional ou aviso de retenção (force_ask)",
   "overwrite": {
     "CommandLine": "comando otimizado ou redirecionado para cache"
   }
@@ -158,7 +193,7 @@ As diretrizes do sistema residem em [`security/policies.json`](security/policies
 | Código | Nome da Regra | Severidade | Efeito Prático | Fiscalização |
 | :---: | :--- | :---: | :--- | :---: |
 | **`RULE-01`** | **Soberania do Display** | `CRITICAL` | Leitura de `monitors.lua` é livre (`allow`); edição/escrita exige confirmação humana. | **Hook `force_ask`** |
-| **`RULE-02`** | **Anti-Destruição** | `CRITICAL` | Bloqueio de deleção recursiva indiscriminada na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, etc.). | **Hook `deny` sumário** |
+| **`RULE-02`** | **Anti-Destruição** | `CRITICAL` | Bloqueio de deleção recursiva indiscriminada na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/root`, `/opt`, `/srv`, `/mnt`, ...). Cobre também mutação direta (`mv`, `cp`, `truncate`, `tee`, `ln`, `>`/`>>`) e recursão em `bash -c "..."`. | **Hook `deny` sumário** |
 | **`RULE-03`** | **Operações de Disco** | `CRITICAL` | Comandos `mkfs`, `fdisk`, `cryptsetup`, `dd` exigem alvo explícito e blindam partições ativas (`/`, `/boot`). | **Hook `force_ask`** |
 | **`RULE-04`** | **Escopo Estrito** | `HIGH` | O comando com privilégio deve ater-se exclusivamente à necessidade da tarefa solicitada. | `governance-gate` |
 | **`RULE-05`** | **Preservação de Permissões** | `HIGH` | Veto semântico a permissões recursivas abusivas (`chmod -R 777`, `chmod 777 -R`, `a+w` ou `chown -R` no sistema). | **Hook `deny`** |
@@ -192,22 +227,22 @@ cd bash-sudo-agents
 
 ### O que o instalador faz automaticamente:
 * 📁 Cria as estruturas em `~/.gemini/config/plugins/bash-sudo-agents` e `~/.gemini/antigravity/scratch/security`.
-* 💾 Realiza **backup atômico** com timestamp de qualquer instalação anterior em `~/.gemini/antigravity/scratch/backups/`.
+* 💾 Realiza **backup atômico** com timestamp das instalações anteriores (plugin, políticas e agentes) em `~/.gemini/antigravity/scratch/backups/`.
 * 📦 Instala as Skills e as Regras Constitucionais (`AGENTS.md`).
-* 🚧 Instala e registra o motor Python `governance-gate.py` (`PreToolUse`) em `hooks.json` com `chmod 555`.
+* 🚧 Instala o motor Python `governance-gate.py` (`chmod 555`), executa um **smoke test** e grava o `hooks.json` com o **caminho absoluto** do motor (resolução determinística, independente do `cwd`).
 * 🔒 Aplica isolamento de leitura estrita (`chmod 444`) em todos os arquivos de governança.
 
 ---
 
 ## 🧪 Suíte de Testes e Validação
 
-O framework conta com **183 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, taxonomia `ask`/`force_ask`/`deny`, caminhos de governança, permissões semânticas e compressão:
+O framework conta com **224 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, mutação de caminhos vitais, interpretadores inline, fail-closed de schema, falsos positivos de aspas, taxonomia `ask`/`force_ask`/`deny`, caminhos de governança, permissões semânticas e compressão:
 
 ```bash
-# 1. Executar verificador rápido de bypass e regressão (83 testes Zero-Pip / Stdlib pura)
+# 1. Executar verificador rápido de bypass e regressão (104 testes Zero-Pip / Stdlib pura)
 python3 tests/verify_fixes.py
 
-# 2. Executar suíte completa de testes unitários (100 testes via pytest)
+# 2. Executar suíte completa de testes unitários (120 testes via pytest)
 pytest tests/test_governance_gate.py
 ```
 
@@ -220,12 +255,12 @@ bash-sudo-agents/
 ├── 📄 .gitignore                  # Proteção contra vazamento de arquivos locais
 ├── ⚙️ install.sh                  # Instalador universal automatizado com backup atômico
 ├── 📘 README.md                   # Esta documentação executiva
-├── 🧪 tests/                      # Suíte de testes automatizados (183 verificações)
-│   ├── test_governance_gate.py    # 100 testes unitários (pytest)
-│   └── verify_fixes.py            # 83 testes de segurança sem dependências externas
+├── 🧪 tests/                      # Suíte de testes automatizados (224 verificações)
+│   ├── test_governance_gate.py    # 120 testes unitários (pytest)
+│   └── verify_fixes.py            # 104 testes de segurança sem dependências externas
 ├── 🧩 plugin/
 │   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.4.0)
-│   ├── hooks.json                 # Registro do hook chamando python3 ./hooks/governance-gate.py
+│   ├── hooks.json                 # Template do hook (`__GATE_PATH__` -> caminho absoluto na instalação)
 │   ├── agents/                    # Agentes nativos declarados no ecossistema Antigravity
 │   │   ├── agente-bash.md         # Agente nativo: Operador de Terminal
 │   │   └── agente-sudo-policy.md  # Agente nativo: Gestor Constitucional

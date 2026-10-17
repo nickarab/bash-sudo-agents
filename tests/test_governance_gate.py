@@ -33,6 +33,9 @@ PLUGIN_HOOKS_DIR = Path(__file__).resolve().parent.parent / "plugin" / "hooks"
 GATE_PATH = PLUGIN_HOOKS_DIR / "governance-gate.py"
 _spec = importlib.util.spec_from_file_location("governance_gate", GATE_PATH)
 gg = importlib.util.module_from_spec(_spec)
+# PEP 563 (`from __future__ import annotations`) faz o `@dataclass` resolver as
+# anotações em runtime; isso exige que o módulo esteja registrado em sys.modules.
+sys.modules["governance_gate"] = gg
 _spec.loader.exec_module(gg)
 
 
@@ -379,42 +382,42 @@ class TestDestructivePatterns:
 # ---------------------------------------------------------------------------
 
 class TestRejectionLimit:
-    """Verifica o estado de rejeição persistente com limite 3X."""
+    """Verifica o estado de rejeição persistente (RULE-10 — recusas consecutivas)."""
 
     def test_three_rejections_escalate(self, tmp_home):
-        """Após 3 rejeições, a 4ª é escalada."""
-        cmd = "sudo rm -rf /"
-        key = f"{Path.home()}:{hashlib.sha256(f'{Path.home()}:{cmd}'.encode()).hexdigest()[:16]}"
-
-        # Limpar estado
-        gg.REJECTION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        """Após 3 recusas CONSECUTIVAS, a 3ª é escalada."""
         if gg.REJECTION_STATE_FILE.exists():
             gg.REJECTION_STATE_FILE.unlink()
 
-        # 3 rejeições
-        for i in range(3):
-            count = gg._increment_rejection(key)
-            assert count == i + 1
+        assert gg._record_decision("deny", "rm -rf /") == 1
+        assert gg._record_decision("deny", "rm -rf /") == 2
+        assert gg._record_decision("deny", "rm -rf /") == 3
+        assert gg._get_rejection_count() == 3
 
-        # Verificar contador
-        assert gg._get_rejection_count(key) == 3
+    def test_success_resets_consecutive_counter(self, tmp_home):
+        """Qualquer aprovação (allow/ask/force_ask) zera o contador."""
+        if gg.REJECTION_STATE_FILE.exists():
+            gg.REJECTION_STATE_FILE.unlink()
 
-        # Na próxima rejeição, deve escalar
-        count = gg._increment_rejection(key)
-        assert count == 4
+        assert gg._record_decision("deny", "rm -rf /") == 1
+        assert gg._record_decision("deny", "rm -rf /") == 2
+        # Uma aprovação interrompe a sequência.
+        assert gg._record_decision("allow", "lscpu") == 0
+        assert gg._get_rejection_count() == 0
+        # E a contagem recomeça do zero.
+        assert gg._record_decision("deny", "rm -rf /") == 1
 
     def test_rejection_ttl_expiration(self, tmp_home):
         """Entradas expiradas (TTL 24h) são limpas."""
-        key = "test:key"
-        gg._increment_rejection(key)
-        assert gg._get_rejection_count(key) == 1
+        gg._record_decision("deny", "rm -rf /")
+        assert gg._get_rejection_count() == 1
 
-        # Simular expiração modificando o tempo
+        # Simular expiração: envelhecer o timestamp.
         state = gg._load_rejection_state()
-        state[key]["last_reject"] = 0  # tempo antigo
+        state["last_reject"] = 0
         gg._save_rejection_state(state)
 
-        assert gg._get_rejection_count(key) == 0
+        assert gg._get_rejection_count() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -747,18 +750,33 @@ class TestStaticCatCache:
 # 17. RULE-10: chave de rejeição contextual + force_ask não incrementa (v4.3.0)
 # ---------------------------------------------------------------------------
 
-class TestRejectionKey:
-    def test_whitespace_variation_same_key(self):
-        now = 1_700_000_000.0
-        k1 = gg._rejection_key("rm -rf /", "/home/user", now=now)
-        k2 = gg._rejection_key("rm  -rf  /", "/home/user", now=now)
-        assert k1 == k2
+class TestRejectionState:
+    def test_escalation_message_on_third_consecutive_deny(self, tmp_home, monkeypatch):
+        """A 3ª recusa consecutiva inclui o alerta de escalação."""
+        monkeypatch.setenv("HOME", str(tmp_home))
+        state = tmp_home / ".cache" / "antigravity" / "bash_agents" / "rejection_state.json"
+        if state.exists():
+            state.unlink()
 
-    def test_different_time_bucket_different_key(self):
-        now = 1_700_000_000.0
-        k1 = gg._rejection_key("rm -rf /", "/home/user", now=now)
-        k2 = gg._rejection_key("rm -rf /", "/home/user", now=now + 3600)
-        assert k1 != k2
+        run_gate("rm -rf /", cwd=str(tmp_home))
+        run_gate("rm -rf /etc", cwd=str(tmp_home))
+        result = run_gate("rm -rf /usr", cwd=str(tmp_home))
+        assert result.get("decision") == "deny"
+        assert "ALERTA" in result.get("reason", "")
+
+    def test_allow_between_denies_resets_counter(self, tmp_home, monkeypatch):
+        """Um comando aprovado no meio interrompe a sequência (não escala)."""
+        monkeypatch.setenv("HOME", str(tmp_home))
+        state = tmp_home / ".cache" / "antigravity" / "bash_agents" / "rejection_state.json"
+        if state.exists():
+            state.unlink()
+
+        run_gate("rm -rf /", cwd=str(tmp_home))
+        run_gate("rm -rf /etc", cwd=str(tmp_home))
+        run_gate("lscpu", cwd=str(tmp_home))  # aprovação -> reseta
+        result = run_gate("rm -rf /usr", cwd=str(tmp_home))
+        assert result.get("decision") == "deny"
+        assert "ALERTA" not in result.get("reason", "")
 
     def test_ask_does_not_increment(self, tmp_home, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_home))
@@ -903,3 +921,163 @@ class TestV440HardeningAndAntiFatigue:
         ow = result.get("overwrite", {}).get("CommandLine", "")
         assert "head -n 25" in ow and "tee" in ow
 
+
+# ---------------------------------------------------------------------------
+# 20. v4.4.x: compatibilidade, fail-closed, aspas, mutação vital e inline
+# ---------------------------------------------------------------------------
+
+class TestPythonCompatibility:
+    """Garante anotações preguiçosas (PEP 563) para rodar em Python 3.8/3.9."""
+
+    def test_future_annotations_enabled(self):
+        src = GATE_PATH.read_text(encoding="utf-8")
+        assert "from __future__ import annotations" in src
+
+    def test_annotations_are_strings(self):
+        """Com PEP 563 as anotações ficam como strings (não avaliadas no def)."""
+        ann = gg.out.__annotations__
+        assert ann, "out() deve ter anotações"
+        assert all(isinstance(v, str) for v in ann.values())
+
+    def test_pep604_annotation_present(self):
+        """`X | None` é usado e não quebra o import graças às anotações lazy."""
+        assert gg.out.__annotations__.get("overwrite") == "dict | None"
+
+
+class TestFailClosedSchema:
+    """Payload válido sem CommandLine reconhecível não deve virar `allow`."""
+
+    def test_unknown_tool_without_command_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate_payload({
+            "toolCall": {"name": "ferramenta_desconhecida", "args": {}},
+        })
+        assert result.get("decision") == "force_ask"
+
+    def test_missing_tool_name_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate_payload({"toolCall": {"args": {}}})
+        assert result.get("decision") == "force_ask"
+
+    def test_run_command_empty_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate_payload({
+            "toolCall": {"name": "run_command", "args": {"CommandLine": ""}},
+        })
+        assert result.get("decision") == "force_ask"
+
+    def test_known_non_command_tool_allowed(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate_payload({
+            "toolCall": {
+                "name": "write_to_file",
+                "args": {"TargetFile": str(tmp_home / "notas.txt"), "CodeContent": "x"},
+            },
+        })
+        assert result.get("decision") == "allow"
+
+    def test_non_command_tool_governance_target_denied(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        result = run_gate_payload({
+            "toolCall": {
+                "name": "write_to_file",
+                "args": {
+                    "TargetFile": str(tmp_home / ".gemini/config/plugins/bash-sudo-agents/rules/AGENTS.md"),
+                    "CodeContent": "x",
+                },
+            },
+        })
+        assert result.get("decision") == "deny"
+
+
+class TestQuoteFalsePositives:
+    """Strings literais entre aspas não devem disparar vetos."""
+
+    def test_commit_message_with_rm_rf_allowed(self):
+        for cmd in (
+            'git commit -m "fix: nunca rodar rm -rf / de novo"',
+            "git commit -m 'fix: nunca rodar rm -rf / de novo'",
+            'echo "use rm -rf /path com cuidado"',
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd
+
+    def test_quoted_power_word_allowed(self):
+        decision, _, _ = call_audit_command(gg.parse_command('echo "vou dar reboot"'), None, Path("/home/user"))
+        assert decision == "allow"
+
+    def test_substitution_preserved(self):
+        """Substituições de comando continuam sendo inspecionadas."""
+        for cmd in ("$(rm -rf /)", "echo \"$(rm -rf /)\"", "`rm -rf /`"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+
+class TestVitalDirectoriesExpanded:
+    def test_new_vital_dirs_denied(self):
+        for cmd in ("rm -rf /root", "rm -rf /opt", "rm -rf /srv", "rm -rf /mnt"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_user_dirs_still_allowed(self):
+        for cmd in ("rm -rf /tmp/build", "rm -rf /home/user/Downloads/old"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd
+
+
+class TestVitalMutation:
+    """RULE-02 estendida: mv/cp/truncate/tee/ln e redirecionamentos em vitais."""
+
+    def test_mutations_on_vital_denied(self):
+        for cmd in (
+            "mv /etc/fstab /tmp/f",
+            "cp /tmp/x /etc/fstab",
+            "install -m 644 x /usr/bin/y",
+            "truncate -s 0 /etc/shadow",
+            "tee /etc/hosts",
+            "ln -sf /tmp/x /etc/passwd",
+            "echo x > /etc/fstab",
+            "echo x >> /var/log/syslog",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_shell_dash_c_recursion_denied(self):
+        for cmd in ('bash -c "rm -rf /"', 'sh -c "mv /etc/hosts /tmp"'):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_benign_mutations_allowed(self):
+        for cmd in (
+            "cp /etc/fstab /tmp/backup",
+            "mv /tmp/a /tmp/b",
+            "echo x > /dev/null",
+            "echo x > ~/notas.txt",
+            "ls /etc 2>&1",
+            "ln -s /usr/bin/python3 ~/.local/bin/py",
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd
+
+
+class TestInlineInterpreter:
+    """Interpretadores inline sobre caminhos protegidos."""
+
+    def test_inline_vital_force_ask(self):
+        for cmd in (
+            'python3 -c "import shutil; shutil.rmtree(\'/etc\')"',
+            'perl -e "unlink(\'/etc/passwd\')"',
+            'ruby -e "File.delete(\'/etc/fstab\')"',
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "force_ask", cmd
+
+    def test_inline_governance_denied(self):
+        cmd = 'python3 -c "open(\'/home/user/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py\',\'w\')"'
+        decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+        assert decision == "deny"
+
+    def test_inline_harmless_allowed(self):
+        for cmd in ('python3 -c "print(1)"', 'python3 -m pytest', 'node -e "console.log(1)"'):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd

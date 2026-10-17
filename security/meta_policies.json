@@ -1,7 +1,7 @@
 {
   "version": "4.0",
   "title": "Constituição de Metagovernança dos Agentes (v4.0)",
-  "description": "Políticas ativas sob autoridade legislativa do @agente-sudo-policy e fiscalização física do motor governance-gate.py para blindar a infraestrutura de agentes contra alterações não solicitadas pela IA",
+  "description": "Políticas ativas sob autoridade legislativa do @agente-sudo-policy e fiscalização em runtime pelo motor governance-gate.py para proteger a infraestrutura de agentes contra alterações não solicitadas pela IA",
   "principles": [
     "Princípio da Intenção Explícita: A IA só pode alterar arquivos de agentes se o usuário ordenar explicitamente.",
     "Princípio da Consulta Pura: Perguntas, dúvidas e indagações são estritamente de leitura (READ-ONLY).",

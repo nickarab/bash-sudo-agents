@@ -189,6 +189,48 @@ def main():
         results += [check("cat /etc/os-release", "cat /etc/os-release", "allow")]
         results += [check("echo olá mundo", "echo olá mundo", "allow")]
 
+        # --- Novos casos (v4.4.x): falsos positivos de aspas ---
+        results += [check("git commit com 'rm -rf /' no texto", 'git commit -m "fix: nunca rodar rm -rf / de novo"', "allow")]
+        results += [check('echo "vou dar reboot"', 'echo "vou dar reboot"', "allow")]
+        results += [check("substituição $() preservada", 'echo "$(rm -rf /)"', "deny")]
+
+        # --- Novos casos (v4.4.x): RULE-02 estendida (mutação de vitais) ---
+        results += [check("mv de arquivo vital", "mv /etc/fstab /tmp/f", "deny")]
+        results += [check("cp para arquivo vital", "cp /tmp/x /etc/fstab", "deny")]
+        results += [check("truncate em arquivo vital", "truncate -s 0 /etc/shadow", "deny")]
+        results += [check("tee em arquivo vital", "tee /etc/hosts", "deny")]
+        results += [check("redirect > para vital", "echo x > /etc/fstab", "deny")]
+        results += [check("redirect > para /dev/null", "echo x > /dev/null", "allow")]
+        results += [check("cp lendo de vital (backup)", "cp /etc/fstab /tmp/backup", "allow")]
+        results += [check('bash -c "rm -rf /"', 'bash -c "rm -rf /"', "deny")]
+        results += [check('sh -c "mv /etc/hosts /tmp"', 'sh -c "mv /etc/hosts /tmp"', "deny")]
+
+        # --- Novos casos (v4.4.x): diretórios vitais expandidos ---
+        for d in ("/root", "/opt", "/srv", "/mnt"):
+            results += [check(f"rm -rf {d}", f"rm -rf {d}", "deny")]
+        results += [check("rm -rf /tmp/build (não vital)", "rm -rf /tmp/build", "allow")]
+
+        # --- Novos casos (v4.4.x): interpretadores inline ---
+        results += [check("python3 -c rmtree /etc", 'python3 -c "import shutil; shutil.rmtree(\'/etc\')"', "force_ask")]
+        results += [check("python3 -c print(1)", 'python3 -c "print(1)"', "allow")]
+
+        # --- Novos casos (v4.4.x): fail-closed de schema ---
+        for _bad_payload in (
+            {"toolCall": {"name": "ferramenta_desconhecida", "args": {}}},
+            {"toolCall": {"name": "run_command", "args": {"CommandLine": ""}}},
+        ):
+            _r = subprocess.run(
+                [sys.executable, str(GATE)],
+                input=json.dumps(_bad_payload), capture_output=True, text=True, timeout=10,
+                env=dict(os.environ),
+            )
+            try:
+                _ok = json.loads(_r.stdout.strip()).get("decision") == "force_ask"
+            except Exception:
+                _ok = False
+            results += [_ok]
+            print(f"[{'PASS' if _ok else 'FAIL'}] fail-closed p/ schema sem CommandLine")
+
         # --- Compressor não deve pendurar em follow ---
         r = run_gate("journalctl --follow")
         ow = r.get("overwrite", {})

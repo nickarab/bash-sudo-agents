@@ -14,14 +14,15 @@
   - *Filtragem na Fonte:* Priorizar comandos concisos. O motor de runtime (`governance-gate.py`) atua como compressor automático, mas o agente deve manter a disciplina técnica.
   - *Pruning de Memória:* Descartar saídas brutas retendo apenas a conclusão técnica em no máximo 5 linhas após diagnósticos extensos.
 
-### `governance-gate.py` (Motor de Governança, Contenção e Cache no Runtime)
-- **Papel e Arquitetura:** Opera no nível do sistema operacional como hook `PreToolUse` nativo do Antigravity. É a barreira física de segurança e otimização do sistema.
-- **Poderes de Fiscalização no SO:**
+### `governance-gate.py` (Motor de Governança Semântica, Guardrail e Cache no Runtime)
+- **Papel e Arquitetura:** Opera como hook `PreToolUse` nativo do Antigravity. É a **camada de governança semântica, guardrail em runtime e policy-as-code** do sistema — não um sandbox de isolamento de kernel.
+- **Decisões de Governança no Runtime:**
   - **ALLOW:** Autoriza a execução direta de comandos seguros e diagnósticos normais (incluindo leitura de `monitors.lua`).
   - **OVERWRITE:** Injeta automaticamente limitadores de saída (`--no-pager`, `tail -n 35`, `head -n 25`, etc.) para economizar tokens ou redireciona leituras para o **Cache Local com TTL**.
   - **ASK:** Retém elevação de privilégio rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `pacman/yay/paru -S*`, `systemctl` de sistema) respeitando o grant nativo **"Always Allow"** do Antigravity (aprova uma vez, lembra sempre).
   - **FORCE_ASK:** Retém a chamada no sistema operacional e exige confirmação explícita do usuário **sempre** (ignora grants cacheados), reservado para operações irreversíveis ou de alto impacto: formatação/disco (`mkfs`, `fdisk`, `cryptsetup`, `mount`), escrita em `monitors.lua` e energia/sessão (`reboot`, `poweroff`, `shutdown`, `suspend`).
-  - **DENY:** Bloqueio físico sumário imediato no SO contra comandos destrutivos (`rm -rf /`, `chmod -R 777 /etc`, derrubada de display manager ou tentativa de escrita/remoção dos arquivos de governança e `hooks.json`).
+  - **DENY:** Bloqueio sumário imediato no runtime contra comandos destrutivos (`rm -rf /`, `chmod -R 777 /etc`, mutação de caminhos vitais, derrubada de display manager ou tentativa de escrita/remoção dos arquivos de governança e `hooks.json`).
+- **Escopo e Limites:** Guardrail de autonomia para LLM cooperativo. Não garante isolamento de processo/usuário/rede; comandos fora das heurísticas podem passar. Combine com `bubblewrap`/cgroups/usuário dedicado se precisar de isolamento real.
 
 ### `@agente-sudo-policy` / `@agente_sudo_policy` (Gestor Constitucional para o Usuário)
 - **Ativação:** Chamado pelo usuário via slash command `/agente-sudo-policy` ou menção `@agente-sudo-policy`.
@@ -44,9 +45,9 @@
 
 ## 3. Artigos de Segurança Obrigatórios (policies.json v4.0)
 
-- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Leitura é livre (`allow`); escrita é fiscalizada fisicamente pelo motor `governance-gate.py` gerando `force_ask`.
-- **RULE-02 (Imunidade de Diretórios Vitais):** Veto sumário (`deny` físico) a remoções recursivas indiscriminadas na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/usr`, `/sys`, `/proc`, `/dev`, `/var`).
-- **RULE-03 (Operações de Disco e Formatação Controlada):** Comandos de disco e formatação (`mkfs`, `fdisk`, `parted`, `cryptsetup`, `dd`) exigem confirmação explícita (`force_ask`) e blindam partições ativas.
+- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Leitura é livre (`allow`); escrita é retida pelo motor `governance-gate.py` gerando `force_ask`.
+- **RULE-02 (Imunidade de Diretórios Vitais):** Veto sumário (`deny`) a remoções recursivas indiscriminadas na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/usr`, `/sys`, `/proc`, `/dev`, `/var`, `/root`, `/opt`, `/srv`, `/mnt`), incluindo mutação direta (`mv`, `cp`, `truncate`, `tee`, `ln`, `>`/`>>`) e recursão em `bash -c "..."`.
+- **RULE-03 (Operações de Disco e Formatação Controlada):** Comandos de disco e formatação (`mkfs`, `fdisk`, `parted`, `cryptsetup`, `dd`) exigem confirmação explícita (`force_ask`) e protegem partições ativas.
 - **RULE-04 (Aderência Estrita ao Escopo):** O comando deve ater-se exclusivamente à necessidade da tarefa solicitada pelo usuário.
 - **RULE-05 (Preservação de Permissões):** Veto semântico (`deny`) a permissões recursivas world-writable (`chmod -R 777`, `chmod 777 -R`, `a+w`) ou alterações recursivas (`chmod -R` / `chown -R`) em diretórios vitais do sistema.
 - **RULE-06 (Privacidade e Credenciais):** Enforce de `HISTFILE=/dev/null`. Descontinuação e veto permanente a runners com senhas locais em base64.

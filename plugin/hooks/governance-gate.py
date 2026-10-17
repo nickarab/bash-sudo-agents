@@ -3,7 +3,7 @@
 governance-gate.py — Antigravity Linux Governance Engine (v4.4.0)
 Arquitetura do Sistema:
   - @agente-bash: Operador de Terminal (LLM)
-  - governance-gate.py: Motor de Governança, Firewall, Cache e Compressor físico no SO (Runtime Hook)
+  - governance-gate.py: Motor de Governança Semântica, Guardrail, Cache e Compressor no Runtime (Hook)
   - @agente-sudo-policy: Gestor Constitucional Legislativo (LLM)
 Recursos:
   1. Auditoria e Firewall Constitucional (RULE-01 a RULE-15)
@@ -21,8 +21,26 @@ Recursos:
       que respeita o "Always Allow" nativo do Antigravity. "force_ask" (sempre
       pergunta, ignora grants) fica reservado a disco/formatação, monitores,
       governança e energia. "deny" fica reservado a destruição real.
+  11. Fail-closed: payload JSON válido sem `CommandLine` reconhecível e cuja
+      ferramenta não é de leitura/escrita conhecida gera "force_ask", nunca "allow".
+  12. Blindagem contra falsos positivos de aspas: os padrões de regex operam
+      sobre uma "superfície" com strings literais removidas, mas preservando
+      substituições de comando ($(...) e crases). `git commit -m "rm -rf /"` deixa
+      de ser vetado.
+  13. RULE-02 estendida: mutações diretas em caminhos vitais por `mv`, `cp`,
+      `install`, `truncate`, `tee`, `ln` e redirecionamentos `>`/`>>` são vetadas.
+      Cobre também `bash -c "..."` por recursão.
+  14. Escapes via interpretador inline (`python3 -c`, `perl -e`, ...) que
+      referenciem caminhos protegidos são retidos (governança -> deny; vital ->
+      force_ask).
+  15. RULE-10 reescrita: contador de recusas CONSECUTIVAS (qualquer aprovação
+      zera a sequência), sem dependência de bucket temporal.
 Zero dependências externas (estritamente Python 3.8+ Standard Library).
 """
+
+# Habilita anotações preguiçosas (PEP 563): permite usar PEP 604 (`str | None`)
+# e PEP 585 (`list[str]`) em Python 3.8/3.9 sem quebrar no import do módulo.
+from __future__ import annotations
 
 import fnmatch
 import sys
@@ -49,7 +67,22 @@ REJECTION_STATE_FILE = CACHE_DIR / "rejection_state.json"
 # ---------------------------------------------------------------------------
 REJECTION_TTL_SECONDS = 86400  # 24 horas
 REJECTION_LIMIT = 3
-REJECTION_WINDOW_SECONDS = 3600  # 1 hora — janela de sessão/tempo para a Regra 3X
+
+# Ferramentas que NÃO carregam `CommandLine`. São consideradas "seguras por
+# schema" (o `TargetFile`, quando existe, é auditado normalmente). Qualquer
+# ferramenta fora desta lista e sem CommandLine cai em fail-closed (force_ask).
+NON_COMMAND_TOOLS = frozenset({
+    # Leitura / navegação
+    "view_file", "read_file", "list_dir", "list_files", "grep_search",
+    "codebase_search", "search_files", "open_file",
+    # Escrita / edição (TargetFile auditado)
+    "write_to_file", "create_file", "edit_file", "replace_file_content",
+    "apply_patch", "delete_file",
+    # Conversa / orquestração / rede
+    "ask_question", "send_message", "search_web", "read_url_content",
+    "manage_task", "schedule", "invoke_subagent", "define_subagent",
+    "manage_subagents", "todo_write", "browser_action",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -60,22 +93,18 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def out(decision: str, reason: str = "", overwrite: dict | None = None,
-        rule: str | None = None, cmd_hash: str | None = None,
-        latency_ms: int | None = None) -> None:
-    """Emite decisão JSON no stdout e encerra com código 0."""
+def out(decision: str, reason: str = "", overwrite: dict | None = None) -> None:
+    """Emite a decisão JSON no stdout e encerra com código 0.
+
+    O contrato exposto ao hook é apenas {decision, reason, overwrite}. Os
+    metadados de auditoria estruturada (regra, hash do comando, latência) são
+    registrados exclusivamente em `audit.log`, via `audit_log()`.
+    """
     res: dict = {"decision": decision}
     if reason:
         res["reason"] = reason
     if overwrite:
         res["overwrite"] = overwrite
-    # Campos de auditoria estruturada
-    if rule:
-        pass # res["rule"] = rule
-    if cmd_hash:
-        pass # res["cmd_hash"] = cmd_hash
-    if latency_ms is not None:
-        pass # res["latency_ms"] = latency_ms
     print(json.dumps(res, ensure_ascii=False))
     sys.exit(0)
 
@@ -112,57 +141,67 @@ def _escalation_reason(reason: str, cwd: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Estado de rejeição persistente (RULE-10 — Seção 5.2)
+# Estado de rejeição persistente (RULE-10 — Regra 3X, recusas CONSECUTIVAS)
 # ---------------------------------------------------------------------------
 
 def _load_rejection_state() -> dict:
+    """Carrega {count, last_reject, last_cmd}, expirando por TTL (24h)."""
+    fresh = {"count": 0, "last_reject": 0, "last_cmd": ""}
     try:
         if REJECTION_STATE_FILE.exists():
             data = json.loads(REJECTION_STATE_FILE.read_text(encoding="utf-8"))
-            now = time.time()
-            # Limpar entradas expiradas (TTL 24h)
-            return {k: v for k, v in data.items() if now - v.get("last_reject", 0) < REJECTION_TTL_SECONDS}
+            if not isinstance(data, dict):
+                return fresh
+            if time.time() - data.get("last_reject", 0) >= REJECTION_TTL_SECONDS:
+                return fresh
+            return data
     except Exception:
         pass
-    return {}
+    return fresh
 
 
 def _save_rejection_state(state: dict) -> None:
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        REJECTION_STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        REJECTION_STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
         os.chmod(REJECTION_STATE_FILE, 0o600)
     except Exception:
         pass
 
 
-def _increment_rejection(key: str) -> int:
-    state = _load_rejection_state()
-    entry = state.get(key, {"count": 0, "last_reject": 0})
-    entry["count"] = entry.get("count", 0) + 1
-    entry["last_reject"] = time.time()
-    state[key] = entry
-    _save_rejection_state(state)
-    return entry["count"]
+def _clear_rejection_state() -> None:
+    """Zera o contador de recusas consecutivas (usado em aprovações)."""
+    try:
+        if REJECTION_STATE_FILE.exists():
+            REJECTION_STATE_FILE.unlink()
+    except Exception:
+        pass
 
 
-def _get_rejection_count(key: str) -> int:
-    state = _load_rejection_state()
-    return state.get(key, {}).get("count", 0)
+def _record_decision(decision: str, cmd: str) -> int:
+    """Atualiza o contador de recusas CONSECUTIVAS (RULE-10).
 
+    Semântica: apenas `deny` incrementa o contador. Qualquer outra decisão
+    (`allow`, `ask`, `force_ask`) interrompe a sequência e zera o contador —
+    ou seja, uma aprovação (ou um comando seguro) reseta a Regra 3X.
 
-def _rejection_key(cmd: str, cwd: str, now: float | None = None) -> str:
-    """Chave de rejeição contextual (sessão/tempo), resistente a variações triviais.
-
-    - Normaliza espaços em branco do comando, para que variações triviais de
-      espaçamento no mesmo comando perigoso não zerem o contador.
-    - Agrega um bucket temporal (1h) como proxy de sessão, expirando naturalmente.
+    Retorna o número de recusas consecutivas após a atualização.
     """
-    now = now if now is not None else time.time()
-    bucket = int(now // REJECTION_WINDOW_SECONDS)
-    norm = re.sub(r"\s+", " ", (cmd or "").strip())
-    h = hashlib.sha256(f"{cwd}:{norm}".encode("utf-8")).hexdigest()[:16]
-    return f"{bucket}:{h}"
+    state = _load_rejection_state()
+    if decision == "deny":
+        state["count"] = int(state.get("count", 0)) + 1
+        state["last_reject"] = time.time()
+        state["last_cmd"] = re.sub(r"\s+", " ", (cmd or "").strip())[:200]
+        _save_rejection_state(state)
+        return int(state["count"])
+    if state.get("count"):
+        _clear_rejection_state()
+    return 0
+
+
+def _get_rejection_count() -> int:
+    """Quantidade de recusas consecutivas atualmente registradas."""
+    return int(_load_rejection_state().get("count", 0))
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +387,100 @@ def _shell_split_commands(cmd: str) -> list[str]:
     return [s for s in segments if s]
 
 
+# ---------------------------------------------------------------------------
+# Superfície de casamento para regex (fim dos falsos positivos por aspas)
+# ---------------------------------------------------------------------------
+
+def _read_substitution(cmd: str, start: int) -> tuple[str, int]:
+    """Lê `$( ... )` balanceado a partir de `start` (cmd[start] == '$').
+
+    Retorna (trecho, próximo_índice). Nunca lança exceção.
+    """
+    depth = 0
+    i = start + 1  # aponta para '('
+    n = len(cmd)
+    quote: str | None = None
+    while i < n:
+        ch = cmd[i]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and i + 1 < n:
+                i += 1
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            continue
+        if ch == "\\" and i + 1 < n:
+            i += 2
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return cmd[start:i + 1], i + 1
+        i += 1
+    return cmd[start:], n
+
+
+def _regex_surface(cmd: str) -> str:
+    """Devolve a parte do comando relevante para execução de regex.
+
+    Remove strings literais entre aspas (que o shell não interpreta como
+    sintaxe), preservando substituições de comando `$(...)` e crases, que são
+    efetivamente avaliadas pelo shell. Assim `git commit -m "rm -rf /"` não é
+    mais vetado, mas `echo "$(rm -rf /)"` continua sendo.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(cmd)
+    quote: str | None = None
+    while i < n:
+        ch = cmd[i]
+        if quote == "'":
+            if ch == "'":
+                quote = None
+            i += 1
+            continue
+        if quote == '"':
+            if ch == '"':
+                quote = None
+                i += 1
+                continue
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == "`":
+                j = cmd.find("`", i + 1)
+                if j != -1:
+                    out.append(cmd[i:j + 1])
+                    i = j + 1
+                    continue
+                i += 1
+                continue
+            if ch == "$" and i + 1 < n and cmd[i + 1] == "(":
+                sub, i = _read_substitution(cmd, i)
+                out.append(sub)
+                continue
+            i += 1
+            continue
+        # Fora de aspas: preserva tudo (inclui $(...) e crases já literais).
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            continue
+        if ch == "\\" and i + 1 < n:
+            out.append(cmd[i:i + 2])
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _unwrap_privilege_prefix(argv: list[str]) -> list[str]:
     """
     Remove prefixos de elevação (sudo/doas/pkexec/run0/command/env) e suas
@@ -381,9 +514,13 @@ def _unwrap_privilege_prefix(argv: list[str]) -> list[str]:
     return argv[i:]
 
 
-# Diretórios vitais do sistema (RULE-02). Não inclui /home em geral: apenas a
-# raiz do home (~) é considerada vital, não subdiretórios arbitrários do usuário.
-VITAL_TOP_DIRS = {"boot", "etc", "usr", "var", "sys", "proc", "dev", "bin", "sbin", "lib", "lib64"}
+# Diretórios vitais do sistema (RULE-02). A raiz do home (~) também é tratada
+# como vital em `_VITAL_GLOB_TARGETS`/`_is_vital_path`, não subdiretórios do usuário.
+# v4.4.x: inclui root/opt/srv/mnt (dados de sistema, serviços e pontos de montagem).
+VITAL_TOP_DIRS = {
+    "boot", "etc", "usr", "var", "sys", "proc", "dev", "bin", "sbin",
+    "lib", "lib64", "root", "opt", "srv", "mnt",
+}
 
 # Arquivos vitais específicos: deletá-los é sempre destrutivo, mesmo sem a flag
 # recursiva (RULE-02). A raiz do home também é protegida por "home" em _is_vital_path.
@@ -509,15 +646,24 @@ def _shred_is_destructive(args: list[str], cwd: Path) -> bool:
     return False
 
 
-def _dd_is_destructive(args: list[str]) -> bool:
-    """dd é destrutivo quando grava (of=) em dispositivo de bloco."""
+def _dd_is_destructive(args: list[str], cwd: Path) -> bool:
+    """dd é destrutivo quando grava (of=) em dispositivo de bloco ou caminho vital."""
     for a in args:
-        if a.startswith("of=/dev/"):
-            return True
+        if a.startswith("of="):
+            dest = a[len("of="):]
+            if dest.startswith("/dev/"):
+                return True
+            if _path_is_vital(dest, cwd):
+                return True
     return False
 
 
-def _detect_destructive(cmd: str, cwd: Path) -> str | None:
+# Intérpretes de shell: `bash -c "<cmd>"` é analisado recursivamente.
+SHELL_BINS = {"bash", "sh", "dash", "zsh", "ksh", "mksh", "busybox"}
+_MAX_RECURSION = 3
+
+
+def _detect_destructive(cmd: str, cwd: Path, depth: int = 0) -> str | None:
     """
     Detecção semântica de comandos destrutivos (RULE-02).
     Divide a linha em comandos, remove prefixos de privilégio e verifica o
@@ -525,13 +671,23 @@ def _detect_destructive(cmd: str, cwd: Path) -> str | None:
     A checagem de variáveis não resolvidas ($) é aplicada apenas a comandos
     destrutivos confirmados (rm/find/shred/dd), nunca a comandos inofensivos
     como `echo $PATH`.
+
+    Mutações diretas (`mv`, `cp`, `truncate`, `tee`, `ln`, redirecionamentos)
+    são cobertas por `_detect_mutation`. `bash -c "..."` é reanalisado.
     """
+    if depth > _MAX_RECURSION:
+        return None
     for seg in _shell_split_commands(cmd):
         argv = _unwrap_privilege_prefix(_safe_split(seg))
         if not argv:
             continue
-        binary = argv[0]
+        binary = argv[0].split("/")[-1]
         args = argv[1:]
+        # Reanalisa o interior de shells `-c` (escape clássico do parser).
+        if binary in SHELL_BINS and "-c" in args:
+            inner = " ".join(args[args.index("-c") + 1:])
+            if _detect_destructive(inner, cwd, depth + 1) or _detect_mutation(inner, cwd):
+                return binary
         if binary == "rm":
             if _rm_is_destructive(args, cwd):
                 return "rm"
@@ -542,8 +698,78 @@ def _detect_destructive(cmd: str, cwd: Path) -> str | None:
             if _shred_is_destructive(args, cwd):
                 return "shred"
         elif binary == "dd":
-            if _dd_is_destructive(args):
+            if _dd_is_destructive(args, cwd):
                 return "dd"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# RULE-02 estendida: mutação direta de caminhos vitais
+# (mv, cp, install, truncate, tee, ln e redirecionamentos > / >>)
+# ---------------------------------------------------------------------------
+
+# Nós de dispositivo benignos: redirecionar saída para eles não é destrutivo.
+_REDIRECT_SAFE_DEV = frozenset({
+    "/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom",
+    "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/tty",
+})
+
+_MUTATION_BINS = {"mv", "cp", "install", "truncate", "tee", "ln"}
+
+
+def _redirect_targets(surface: str) -> list[str]:
+    """Alvos de redirecionamento de saída (`>`, `>>`) que criam/truncam arquivos.
+
+    Ignora duplicações de descritor (`2>`, `2>&1`, `>&2`) — o `>` precedido por
+    dígito é excluído pelo lookbehind.
+    """
+    targets: list[str] = []
+    for m in re.finditer(r'(?<![0-9])>{1,2}\s*([^\s;&|<>()]+)', surface):
+        tok = m.group(1).strip("'\"")
+        if tok:
+            targets.append(tok)
+    return targets
+
+
+def _path_is_vital(arg: str, cwd: Path) -> bool:
+    """True se `arg` aponta para caminho vital (nunca para nós de dispositivo benignos)."""
+    if "$" in arg:
+        return True  # variável não resolvida: conservador
+    norm = _normalize_path(arg, cwd)
+    if norm in _REDIRECT_SAFE_DEV:
+        return False
+    return _is_vital_path(norm)
+
+
+def _mutation_is_destructive(binary: str, args: list[str], cwd: Path) -> bool:
+    operands = [a for a in args if not a.startswith("-")]
+    if binary == "mv":
+        # mv remove a origem vital (perda real do arquivo original).
+        return any(_path_is_vital(a, cwd) for a in operands)
+    if binary in {"cp", "install", "tee", "ln"}:
+        # Somente o destino importa: ler/symlinkar a partir de caminho vital
+        # (backup, `ln -s /usr/bin/x ~/.local/bin/`) é legítimo; sobrescrever
+        # um caminho vital não é.
+        dest = operands[-1] if operands else ""
+        return bool(dest) and _path_is_vital(dest, cwd)
+    if binary == "truncate":
+        return any(_path_is_vital(a, cwd) for a in operands)
+    return False
+
+
+def _detect_mutation(cmd: str, cwd: Path) -> str | None:
+    """Retorna o binário/operador quando há mutação direta de caminho vital."""
+    surface = _regex_surface(cmd)
+    for target in _redirect_targets(surface):
+        if _path_is_vital(target, cwd):
+            return "redirect"
+    for seg in _shell_split_commands(surface):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary in _MUTATION_BINS and _mutation_is_destructive(binary, argv[1:], cwd):
+            return binary
     return None
 
 
@@ -808,7 +1034,7 @@ DISK_PATTERN = re.compile(
 PERM_PATTERN = re.compile(
     _BOUNDARY +
     r'(?:chmod\s+-R\s+(?:0?777|777|a\+rwx|ugo\+rwx|a=rwx)\b'
-    r'|chown\s+-R\s+\S+\s+(?:/|/(?:boot|etc|usr|var|sys|proc|dev|bin|sbin|lib|lib64)(?:/.*)?))'
+    rf'|chown\s+-R\s+\S+\s+(?:/|/(?:{_VITAL_ALT})(?:/.*)?))'
 )
 
 # RULE-07: Estabilidade de serviços essenciais — veto a derrubar a sessão ativa
@@ -857,6 +1083,48 @@ WRITE_OPS_PATTERN = re.compile(
     r'|(^|[;&|\s])(chmod|chown|chattr|rm|mv|cp|install|shred|ln|unlink)(\s|$))'
 )
 
+# ---------------------------------------------------------------------------
+# Interpretadores inline (`python3 -c`, `perl -e`, ...): escape do parser de shell
+# ---------------------------------------------------------------------------
+
+INLINE_INTERPRETERS = frozenset({
+    "python", "python2", "python3", "perl", "ruby", "node", "nodejs",
+    "php", "lua", "osascript", "pwsh", "powershell", "Rscript",
+})
+EVAL_FLAGS = frozenset({"-c", "-e", "-r", "--eval", "--print"})
+
+# Menção a caminho protegido dentro do código passado ao interpretador.
+_PROTECTED_MENTION = re.compile(
+    r'/(?:' + _VITAL_ALT + r'|home)(?:/|\b)'
+    r'|/dev/|\b(?:passwd|shadow|gshadow|sudoers|fstab|crypttab)\b'
+    r'|scratch/security|bash-sudo-agents|hooks\.json'
+)
+
+
+def _detect_inline_interpreter(cmd: str) -> str | None:
+    """
+    Interpretadores inline (`python3 -c "..."`, `perl -e "..."`) escapam da
+    análise semântica baseada em argv. Se o código referenciar caminhos
+    protegidos, retorna:
+      - "deny":      referência à infraestrutura de governança;
+      - "force_ask": referência a caminho vital do sistema.
+    """
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary not in INLINE_INTERPRETERS:
+            continue
+        if not any(a in EVAL_FLAGS for a in argv[1:]):
+            continue
+        code = " ".join(argv[1:])
+        if GOV_PATTERN.search(code):
+            return "deny"
+        if _PROTECTED_MENTION.search(code):
+            return "force_ask"
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Auditoria constitucional principal
@@ -884,50 +1152,71 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
     cmd = parsed.raw_cmd
     target_str = target_raw or ""
     resolved_target = _resolve_gov_target(target_str, cwd)
+    # Superfície de casamento: remove strings literais entre aspas, mas preserva
+    # substituições $() e crases. Evita falsos positivos (ex.: mensagens de commit)
+    # sem abrir mão da detecção dentro de sub-shells.
+    surface = _regex_surface(cmd)
 
     # RULE-06: Veto irreversível ao sudo_runner
-    if SUDO_RUNNER_PATTERN.search(cmd):
+    if SUDO_RUNNER_PATTERN.search(surface):
         return "deny", "[governance-gate / RULE-06] sudo_runner.sh foi descontinuado.", None
 
     # RULE-02: Veto sumário anti-destruição (semântico + regex fallback)
     destructive_bin = _detect_destructive(cmd, cwd)
-    if destructive_bin or DESTRUCTIVE_PATTERN.search(cmd):
+    if destructive_bin or DESTRUCTIVE_PATTERN.search(surface):
         return "deny", "[governance-gate / RULE-02] Veto sumário: comando destrutivo detectado.", None
 
+    # RULE-02 estendida: mutação direta de caminho vital (mv/cp/truncate/tee/ln/redirect)
+    mutation_bin = _detect_mutation(cmd, cwd)
+    if mutation_bin:
+        return "deny", (
+            f"[governance-gate / RULE-02] Veto: mutação direta de caminho vital "
+            f"detectada ({mutation_bin})."
+        ), None
+
     # RULE-07: Estabilidade de serviços essenciais (anti-crash)
-    if SERVICE_PATTERN.search(cmd):
+    if SERVICE_PATTERN.search(surface):
         return "deny", "[governance-gate / RULE-07] Tentativa de interromper serviço crítico da sessão.", None
 
     # RULE-05: Preservação da árvore de permissões (semântica + regex fallback)
-    if _detect_perm_abuse(cmd, cwd) or PERM_PATTERN.search(cmd):
+    if _detect_perm_abuse(cmd, cwd) or PERM_PATTERN.search(surface):
         return "deny", "[governance-gate / RULE-05] Alteração recursiva de permissões em diretório protegido.", None
 
     # RULE-01: Soberania do Display — leitura é livre (RULE-09); escrita retém.
     if MONITOR_PATTERN.search(target_str) \
             or (target_path and MONITOR_PATTERN.search(str(target_path))):
         return "force_ask", "[governance-gate / RULE-01] Alteração em configuração de monitores detectada.", None
-    if MONITOR_PATTERN.search(cmd) and _monitor_write_intent(cmd):
+    if MONITOR_PATTERN.search(surface) and _monitor_write_intent(surface):
         return "force_ask", "[governance-gate / RULE-01] Alteração em configuração de monitores detectada.", None
 
     # RULE-03: Operações de disco e formatação controladas
-    if DISK_PATTERN.search(cmd):
+    if DISK_PATTERN.search(surface):
         return "force_ask", "[governance-gate / RULE-03] Operação de disco/formatação exige confirmação explícita.", None
 
     # RULE-07 (classe de energia): reboot/poweroff/suspend sempre exigem confirmação.
-    if POWER_PATTERN.search(cmd):
+    if POWER_PATTERN.search(surface):
         return "force_ask", "[governance-gate / RULE-07] Desligamento/reinício/suspensão da máquina ou da sessão exige confirmação explícita.", None
 
     # RULE-11 e RULE-12: Proteção de governança — avaliada ANTES da taxonomia de
     # privilégio, para que "sudo rm <arquivo do gate>" seja veto, não mero ask.
+    # Usa o comando BRUTO (não a superfície): falso positivo em path de governança
+    # entre aspas é aceitável; deixar passar não é.
     if resolved_target and GOV_PATTERN.search(resolved_target):
         return "deny", "[governance-gate / RULE-12] Escrita em arquivo de governança detectada.", None
     if GOV_PATTERN.search(cmd) and WRITE_OPS_PATTERN.search(cmd):
         return "deny", "[governance-gate / RULE-12] Comando tenta modificar arquivo de governança.", None
 
+    # Interpretadores inline sobre caminhos protegidos (escape do parser argc).
+    inline = _detect_inline_interpreter(cmd)
+    if inline == "deny":
+        return "deny", "[governance-gate / RULE-12] Interpretador inline tentando manipular a infraestrutura de governança.", None
+    if inline == "force_ask":
+        return "force_ask", "[governance-gate / RULE-02] Interpretador inline referenciando caminho vital exige confirmação explícita.", None
+
     # RULE-15: Elevação de privilégio rotineira — decisão "ask" (respeita o
     # "Always Allow" nativo: aprova uma vez por recurso e não é mais perguntado).
     privileged, ptype = _cmd_is_privileged(cmd)
-    if privileged or SUBSHELL_PRIV_PATTERN.search(cmd):
+    if privileged or SUBSHELL_PRIV_PATTERN.search(surface):
         return "ask", (
             f"[governance-gate / RULE-15] Elevação de privilégio ({ptype or 'privileged'}). "
             "Aprove e marque 'Always Allow' para não ser perguntado novamente."
@@ -937,20 +1226,20 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
 
 
 def _emit_overwrite(new_cmd: str, rule: str, target_path: Path | None, cwd: Path,
-                    cmd_hash: str, latency_ms: int, cwd_str: str) -> None:
+                    latency_ms: int, cwd_str: str) -> None:
     """
     Emite um overwrite de comando re-auditando o comando modificado (Seção 5.5).
-    Se a re-validação reprovar, o overwrite é negado (nunca emitido).
+    Se a re-validação reprovar, o overwrite é negado (nunca emitido). O motivo
+    (regra) é registrado em `audit.log`.
     """
     parsed_mod = parse_command(new_cmd)
     mod_decision, mod_reason, _ = audit_command(parsed_mod, target_path, cwd)
     if mod_decision != "allow":
         audit_log("deny", f"Overwrite rejeitado: {mod_reason}", "OVERWRITE_REVALIDATION",
                   new_cmd, cwd_str, latency_ms)
-        out("deny", f"Comando otimizado rejeitado na re-validação: {mod_reason}",
-            rule="OVERWRITE_REVALIDATION", cmd_hash=cmd_hash, latency_ms=latency_ms)
-    out("allow", "", overwrite={"CommandLine": new_cmd}, rule=rule,
-        cmd_hash=cmd_hash, latency_ms=latency_ms)
+        out("deny", f"Comando otimizado rejeitado na re-validação: {mod_reason}")
+    audit_log("allow", f"overwrite:{rule}", rule, new_cmd, cwd_str, latency_ms)
+    out("allow", "", overwrite={"CommandLine": new_cmd})
 
 
 def audit_and_optimize() -> None:
@@ -971,6 +1260,7 @@ def audit_and_optimize() -> None:
     if not isinstance(args, dict):
         args = {}
 
+    tool_name = (tool_call.get("name") or data.get("tool") or data.get("toolName") or "").strip()
     cmd = (args.get("CommandLine") or args.get("command") or data.get("command") or "").strip()
     target_raw = (args.get("TargetFile") or args.get("file_path")
                   or data.get("target") or data.get("file_path") or "").strip()
@@ -990,27 +1280,25 @@ def audit_and_optimize() -> None:
     # Parser semântico (Seções 5.1 e 8.3)
     parsed = parse_command(cmd)
 
-    # Chave de rejeição contextual (sessão/tempo), resistente a variações triviais
-    rejection_key = _rejection_key(cmd, cwd_str)
-
     # =========================================================================
     # 1. AUDITORIA CONSTITUCIONAL
     # =========================================================================
     decision, reason, overwrite = audit_command(parsed, target_path, cwd, target_raw)
 
+    # RULE-10: contador de recusas CONSECUTIVAS. `deny` incrementa; qualquer
+    # outra decisão (allow/ask/force_ask) interrompe a sequência e zera.
+    consecutive_denials = _record_decision(decision, cmd)
+
     if decision == "deny":
-        # RULE-10: incrementa o contador apenas para vetos (deny), nunca para
-        # confirmações legítimas (force_ask).
-        count = _increment_rejection(rejection_key)
         latency_ms = _now_ms() - start_ms
         audit_log(decision, reason, "RULE-02/05/06/07/12", cmd, cwd_str, latency_ms)
-        if count >= REJECTION_LIMIT:
+        if consecutive_denials >= REJECTION_LIMIT:
             out("deny", _escalation_reason(reason, cwd_str))
         out("deny", reason)
 
     if decision == "force_ask":
         latency_ms = _now_ms() - start_ms
-        audit_log(decision, reason, "RULE-01/03/07", cmd, cwd_str, latency_ms)
+        audit_log(decision, reason, "RULE-01/02/03/07", cmd, cwd_str, latency_ms)
         out("force_ask", reason)
 
     if decision == "ask":
@@ -1018,8 +1306,20 @@ def audit_and_optimize() -> None:
         audit_log(decision, reason, "RULE-15", cmd, cwd_str, latency_ms)
         out("ask", reason)
 
+    # FAIL-CLOSED: payload válido, mas sem `CommandLine` reconhecível.
+    # Ferramentas de leitura/escrita conhecidas prosseguem (o `TargetFile` já foi
+    # auditado em `audit_command`); qualquer schema inesperado exige confirmação
+    # humana em vez de `allow` silencioso.
     if not cmd:
-        out("allow", "", cmd_hash=env_hash, latency_ms=_now_ms() - start_ms)
+        latency_ms = _now_ms() - start_ms
+        if tool_name in NON_COMMAND_TOOLS:
+            audit_log("allow", "Ferramenta sem CommandLine (TargetFile auditado).",
+                      None, "", cwd_str, latency_ms)
+            out("allow", "")
+        audit_log("force_ask", "Payload sem CommandLine reconhecível (fail-closed).",
+                  "FAILSAFE_SCHEMA", "", cwd_str, latency_ms)
+        out("force_ask",
+            "[governance-gate] Chamada sem `CommandLine` reconhecível — schema inesperado; confirmação humana exigida (fail-closed).")
 
     # =========================================================================
     # 2. CACHE LOCAL COM TTL (Quick Wins #1, #5, #7 — diretório 0700)
@@ -1050,7 +1350,7 @@ def audit_and_optimize() -> None:
                 mtime = cache_file.stat().st_mtime
                 if (time.time() - mtime) < ttl:
                     _emit_overwrite(f"cat {shlex.quote(str(cache_file))}", "CACHE_HIT",
-                                    target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
+                                    target_path, cwd, _now_ms() - start_ms, cwd_str)
             except Exception:
                 pass
 
@@ -1061,7 +1361,7 @@ def audit_and_optimize() -> None:
             wrapped_cmd = safe_cache_wrap(cmd, cache_file, pipe_suffix=suffix)
             if wrapped_cmd != cmd:
                 _emit_overwrite(wrapped_cmd, "CACHE_WRITE", target_path, cwd,
-                                env_hash, _now_ms() - start_ms, cwd_str)
+                                _now_ms() - start_ms, cwd_str)
             else:
                 # Comando não-cacheável cai para o fluxo normal (allow)
                 pass
@@ -1073,20 +1373,20 @@ def audit_and_optimize() -> None:
         if cmd.startswith("journalctl") and not re.search(
                 r'(-n\s*\d+|--lines(=|\s*)\d+|-[a-zA-Z]*f\b|--follow)', cmd):
             _emit_overwrite(f"{cmd} --no-pager -n 35", "COMPRESS_JOURNALCTL",
-                            target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
+                            target_path, cwd, _now_ms() - start_ms, cwd_str)
         elif cmd.startswith("dmesg") and not re.search(r'\b(tail|head)\b|-w\b|--follow', cmd):
             _emit_overwrite(f"{cmd} --color=never | tail -n 35", "COMPRESS_DMESG",
-                            target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
+                            target_path, cwd, _now_ms() - start_ms, cwd_str)
         elif cmd.startswith("git log") and not re.search(r'(-\d+|-n\s*\d+)', cmd):
             _emit_overwrite(f"{cmd} -n 15", "COMPRESS_GIT_LOG",
-                            target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
+                            target_path, cwd, _now_ms() - start_ms, cwd_str)
         elif re.match(r'^(pacman|yay|paru)\s+-Ss\s+', cmd):
             _emit_overwrite(f"{cmd} | head -n 25", "COMPRESS_PACMAN",
-                            target_path, cwd, env_hash, _now_ms() - start_ms, cwd_str)
+                            target_path, cwd, _now_ms() - start_ms, cwd_str)
 
     latency_ms = _now_ms() - start_ms
     audit_log("allow", "", None, cmd, cwd_str, latency_ms)
-    out("allow", "", cmd_hash=env_hash, latency_ms=latency_ms)
+    out("allow", "")
 
 
 def main() -> None:

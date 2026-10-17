@@ -10,10 +10,12 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-python3 -c "import sys; assert sys.version_info >= (3, 8)" 2>/dev/null || {
+# O motor usa `from __future__ import annotations`, então PEP 604 (`str | None`)
+# e PEP 585 (`list[str]`) são válidos a partir do Python 3.8.
+if ! python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
     echo "❌ Erro: Requer Python 3.8 ou superior."
     exit 1
-}
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_PLUGIN_DIR="$HOME/.gemini/config/plugins/bash-sudo-agents"
@@ -21,33 +23,67 @@ TARGET_AGENTS_DIR="$HOME/.gemini/config/agents"
 TARGET_SECURITY_DIR="$HOME/.gemini/antigravity/scratch/security"
 BACKUP_DIR="$HOME/.gemini/antigravity/scratch/backups"
 
-echo "[1/4] Criando diretórios de destino..."
+echo "[1/5] Criando diretórios de destino..."
 mkdir -p "$TARGET_PLUGIN_DIR/hooks" "$TARGET_PLUGIN_DIR/agents" "$TARGET_AGENTS_DIR" "$TARGET_SECURITY_DIR" "$BACKUP_DIR"
 
-echo "[2/4] Instalando plugin de agentes e motor Python..."
+echo "[2/5] Backup atômico das instalações anteriores..."
 chmod -R u+rwX "$TARGET_PLUGIN_DIR" 2>/dev/null || true
 chmod -R u+rwX "$TARGET_AGENTS_DIR" 2>/dev/null || true
+chmod -R u+rwX "$TARGET_SECURITY_DIR" 2>/dev/null || true
 
-# Backup atômico antes de sobrescrever (Seção 5.4)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-if [ -d "$TARGET_PLUGIN_DIR" ] && [ "$(ls -A "$TARGET_PLUGIN_DIR" 2>/dev/null)" ]; then
-    cp -a "$TARGET_PLUGIN_DIR" "$BACKUP_DIR/plugin_$TIMESTAMP" 2>/dev/null || true
-fi
+for src_dir in "$TARGET_PLUGIN_DIR" "$TARGET_SECURITY_DIR" "$TARGET_AGENTS_DIR"; do
+    if [ -d "$src_dir" ] && [ "$(ls -A "$src_dir" 2>/dev/null)" ]; then
+        name=$(basename "$src_dir")
+        cp -a "$src_dir" "$BACKUP_DIR/${name}_$TIMESTAMP" 2>/dev/null || true
+    fi
+done
 
+echo "[3/5] Instalando plugin de agentes e motor Python..."
 cp -r "$SCRIPT_DIR/plugin/"* "$TARGET_PLUGIN_DIR/"
 cp -r "$SCRIPT_DIR/plugin/agents/"*.md "$TARGET_AGENTS_DIR/"
 find "$TARGET_PLUGIN_DIR" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
-chmod 555 "$TARGET_PLUGIN_DIR/hooks/governance-gate.py" 2>/dev/null || true
-chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" 2>/dev/null || true
 
-echo "[3/4] Instalando políticas de segurança e metagovernança..."
-if [ -d "$TARGET_SECURITY_DIR" ]; then
-    chmod -R u+rwX "$TARGET_SECURITY_DIR" 2>/dev/null || true
-fi
+echo "[4/5] Instalando políticas de segurança e metagovernança..."
 cp -r "$SCRIPT_DIR/security/"* "$TARGET_SECURITY_DIR/"
 
-echo "[4/4] Aplicando blindagem de somente-leitura (chmod 444)..."
-chmod 444 "$TARGET_PLUGIN_DIR/plugin.json" \
+# Resolução determinística do caminho do motor: substitui o placeholder
+# `__GATE_PATH__` por um caminho ABSOLUTO, para que o hook não dependa do cwd
+# com que o Antigravity o invoque.
+GATE_ABS="$TARGET_PLUGIN_DIR/hooks/governance-gate.py"
+python3 - "$SCRIPT_DIR/plugin/hooks.json" "$TARGET_PLUGIN_DIR/hooks.json" "$GATE_ABS" <<'PY'
+import json
+import sys
+
+template, destination, gate = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(template, encoding="utf-8") as fh:
+    data = json.load(fh)
+
+for entry in data.values():
+    if not isinstance(entry, dict):
+        continue
+    for group in entry.get("PreToolUse", []):
+        for hook in group.get("hooks", []):
+            if "command" in hook:
+                hook["command"] = f"python3 {gate}"
+
+with open(destination, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+PY
+
+echo "[5/5] Verificando o motor e aplicando blindagem somente-leitura (chmod 444)..."
+
+# Smoke test: garante que o motor importa (Python compatível) e responde JSON.
+SMOKE_OUTPUT=$(printf '%s' '{"toolCall":{"name":"run_command","args":{"CommandLine":"lscpu","Cwd":"'"$HOME"'"}}}' | python3 "$GATE_ABS" 2>/dev/null || true)
+if ! printf '%s' "$SMOKE_OUTPUT" | grep -q '"decision"'; then
+    echo "❌ Erro: o motor governance-gate.py não respondeu corretamente (verifique a versão do Python)."
+    exit 1
+fi
+
+chmod 555 "$GATE_ABS" 2>/dev/null || true
+chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" \
+          "$TARGET_PLUGIN_DIR/plugin.json" \
           "$TARGET_PLUGIN_DIR/rules/AGENTS.md" \
           "$TARGET_PLUGIN_DIR/agents/"*.md \
           "$TARGET_AGENTS_DIR/"*.md \
@@ -59,4 +95,5 @@ echo ""
 echo "✅ Instalação v4.4.0 (Python Engine + Taxonomia Anti-Fadiga) concluída com sucesso!"
 echo "Plugin:    $TARGET_PLUGIN_DIR"
 echo "Políticas: $TARGET_SECURITY_DIR"
-echo "Backup:    $BACKUP_DIR/plugin_$TIMESTAMP"
+echo "Hook:      $GATE_ABS"
+echo "Backup:    $BACKUP_DIR/*_$TIMESTAMP"

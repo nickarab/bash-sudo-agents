@@ -120,9 +120,6 @@ Este projeto é uma **Camada de Governança Semântica / guardrail de autonomia*
 * Proteção contra engenharia social do LLM: aprovar **"Always Allow"** em um prompt `ask` de `sudo` libera as próximas elevações daquele recurso.
 
 Se você precisa de isolamento real, combine este guardrail com `bubblewrap`/`firejail`, `systemd-run`/cgroups, usuário dedicado, montagens read-only e/ou containers.
-
-> **Nota de escopo (v5.0.0):** a fiscalização de monitores (`monitors.lua`, RULE-01) **saiu do portfólio do motor de runtime**. A diretriz constitucional permanece (confirmação humana obrigatória), mas o hook não emite mais `force_ask` por edição de monitores.
-
 ---
 
 ## ⚡ Otimização de Tokens & Cache Local

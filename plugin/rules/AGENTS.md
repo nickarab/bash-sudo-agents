@@ -17,7 +17,7 @@
 ### `governance-gate.py` (Motor de Governança Semântica, Guardrail e Cache no Runtime)
 - **Papel e Arquitetura:** Opera como hook `PreToolUse` nativo do Antigravity. É a **camada de governança semântica, guardrail em runtime e policy-as-code** do sistema — não um sandbox de isolamento de kernel.
 - **Decisões de Governança no Runtime:**
-  - **ALLOW:** Autoriza a execução direta de comandos seguros e diagnósticos normais (incluindo leitura de `monitors.lua`).
+  - **AUTO_APPROVE:** Autoriza a execução direta (sem card de aprovação) de comandos seguros e diagnósticos normais (incluindo leitura de `monitors.lua`), comprime a saída e usa cache com TTL. É o valor que pula a política padrão do host — `allow` apenas delega a ela e por isso fica reservado às ferramentas de escrita (review/diff nativo).
   - **OVERWRITE:** Injeta automaticamente limitadores de saída (`--no-pager`, `tail -n 35`, `head -n 25`, etc.) para economizar tokens ou redireciona leituras para o **Cache Local com TTL**.
   - **ASK:** Retém elevação de privilégio rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `pacman/yay/paru -S*`, `systemctl` de sistema) respeitando o grant nativo **"Always Allow"** do Antigravity (aprova uma vez, lembra sempre).
   - **FORCE_ASK:** Retém a chamada no sistema operacional e exige confirmação explícita do usuário **sempre** (ignora grants cacheados), reservado para operações irreversíveis ou de alto impacto: formatação/disco (`mkfs`, `fdisk`, `cryptsetup`, `mount`), escrita em `monitors.lua` e energia/sessão (`reboot`, `poweroff`, `shutdown`, `suspend`).
@@ -45,7 +45,7 @@
 
 ## 3. Artigos de Segurança Obrigatórios (policies.json v4.0)
 
-- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Leitura é livre (`allow`); escrita é retida pelo motor `governance-gate.py` gerando `force_ask`.
+- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Leitura é livre (`auto_approve`); escrita é retida pelo motor `governance-gate.py` gerando `force_ask`.
 - **RULE-02 (Imunidade de Diretórios Vitais):** Veto sumário (`deny`) a remoções recursivas indiscriminadas na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/usr`, `/sys`, `/proc`, `/dev`, `/var`, `/root`, `/opt`, `/srv`, `/mnt`), incluindo mutação direta (`mv`, `cp`, `truncate`, `tee`, `ln`, `>`/`>>`) e recursão em `bash -c "..."`.
 - **RULE-03 (Operações de Disco e Formatação Controlada):** Comandos de disco e formatação (`mkfs`, `fdisk`, `parted`, `cryptsetup`, `dd`) exigem confirmação explícita (`force_ask`) e protegem partições ativas.
 - **RULE-04 (Aderência Estrita ao Escopo):** O comando deve ater-se exclusivamente à necessidade da tarefa solicitada pelo usuário.

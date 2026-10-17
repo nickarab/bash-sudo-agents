@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "=========================================================="
-echo " Instalador: Sistema de Governança de Agentes (v4.4.0 Python)"
+echo " Instalador: Sistema de Governança de Agentes (v4.5.0 Python)"
 echo "=========================================================="
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -92,7 +92,7 @@ chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" \
           "$TARGET_SECURITY_DIR/"*.md 2>/dev/null || true
 
 echo ""
-echo "✅ Instalação v4.4.0 (Python Engine + Taxonomia Anti-Fadiga) concluída com sucesso!"
+echo "✅ Instalação v4.5.0 (Python Engine + Anti-Fadiga auto_approve) concluída com sucesso!"
 echo "Plugin:    $TARGET_PLUGIN_DIR"
 echo "Políticas: $TARGET_SECURITY_DIR"
 echo "Hook:      $GATE_ABS"

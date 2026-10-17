@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-governance-gate.py — Antigravity Linux Governance Engine (v4.4.0)
+governance-gate.py — Antigravity Linux Governance Engine (v4.5.0)
 Arquitetura do Sistema:
   - @agente-bash: Operador de Terminal (LLM)
   - governance-gate.py: Motor de Governança Semântica, Guardrail, Cache e Compressor no Runtime (Hook)
@@ -35,6 +35,29 @@ Recursos:
       force_ask).
   15. RULE-10 reescrita: contador de recusas CONSECUTIVAS (qualquer aprovação
       zera a sequência), sem dependência de bucket temporal.
+   16. Anti-fadiga REAL (v4.5.0): comandos auditados e considerados seguros são
+       emitidos como "auto_approve" (o único valor do contrato do Antigravity que
+       pula o card de aprovação padrão). "allow" apenas delega à política padrão
+       do host — mantido somente para ferramentas de ESCRITA/orquestração, cuja
+       revisão de diff nativa é desejável.
+   17. Interpretadores inline endurecidos (v4.5.0): além da menção a caminhos
+       protegidos, o CÓDIGO passado a `-c`/`-e`/`--eval` é desquotado e submetido
+       às mesmas detecções semânticas do gate (destruição, mutação, permissões) e
+       a um padrão dedicado de remoção de raiz/vital (`rmtree`, `rmSync`, ...).
+       `python3 -c "os.system('rm -rf /')"` deixa de ser `allow`.
+   18. Governança por CAMINHO RESOLVIDO (v4.5.0): a proteção de RULE-11/12 não
+       depende mais de substring no comando bruto. Um pseudo-cwd acompanha `cd`
+       dentro da linha, `$HOME` é expandido, symlinks são resolvidos (`realpath`)
+       e a comparação é feita contra os diretórios/arquivos reais de governança.
+       `cd ~/.gemini/config && rm hooks.json` deixa de ser `allow`.
+   19. Mutação vital ampliada (v4.5.0): `sed -i`/`perl -pi`, `tar -x -C <vital>`
+       e `rsync <...> <vital>` entram em `_detect_mutation`.
+   20. Anti-fadiga (v4.5.0): alvos com variável não resolvida (`$VAR`) em comandos
+       destrutivos/mutação passam de `deny` para `force_ask` (deny fica reservado
+       à destruição cujo caminho literal é vital). `truncate`/redirecionamento sob
+       `/var/log/**` (limpeza rotineira de log) passa de `deny` para `ask`.
+   21. Fail-closed em stdin vazio (v4.5.0): payload ausente/vazio vira `force_ask`
+       (antes era `allow` silencioso).
 Zero dependências externas (estritamente Python 3.8+ Standard Library).
 """
 
@@ -68,21 +91,32 @@ REJECTION_STATE_FILE = CACHE_DIR / "rejection_state.json"
 REJECTION_TTL_SECONDS = 86400  # 24 horas
 REJECTION_LIMIT = 3
 
-# Ferramentas que NÃO carregam `CommandLine`. São consideradas "seguras por
-# schema" (o `TargetFile`, quando existe, é auditado normalmente). Qualquer
-# ferramenta fora desta lista e sem CommandLine cai em fail-closed (force_ask).
-NON_COMMAND_TOOLS = frozenset({
-    # Leitura / navegação
+# Ferramentas que NÃO carregam `CommandLine` (v4.5.0). Foram separadas em dois
+# grupos porque a decisão emitida difere (contrato do Antigravity):
+#   - READ_ONLY_TOOLS: nunca violam RULE-01..15 -> "auto_approve" (zero fricção).
+#   - WRITE_TOOLS: edição/orquestração. O `TargetFile`/`AbsolutePath` é auditado
+#     normalmente; sem alvo de governança/vital emitem "allow", delegando à
+#     política padrão do host (que mostra o diff/review nativo ao usuário).
+# Ferramenta fora destes conjuntos e sem CommandLine cai em fail-closed.
+READ_ONLY_TOOLS = frozenset({
+    # Leitura / navegação / busca (docs oficiais de hooks do Antigravity)
     "view_file", "read_file", "list_dir", "list_files", "grep_search",
-    "codebase_search", "search_files", "open_file",
+    "codebase_search", "search_files", "open_file", "find_by_name",
+    "search_web", "read_url_content", "list_permissions",
+})
+
+WRITE_TOOLS = frozenset({
     # Escrita / edição (TargetFile auditado)
     "write_to_file", "create_file", "edit_file", "replace_file_content",
-    "apply_patch", "delete_file",
-    # Conversa / orquestração / rede
-    "ask_question", "send_message", "search_web", "read_url_content",
-    "manage_task", "schedule", "invoke_subagent", "define_subagent",
-    "manage_subagents", "todo_write", "browser_action",
+    "multi_replace_file_content", "apply_patch", "delete_file",
+    # Conversa / orquestração / agendamento / mídia
+    "ask_question", "send_message", "manage_task", "schedule",
+    "invoke_subagent", "define_subagent", "manage_subagents", "todo_write",
+    "browser_action", "generate_image", "ask_permission",
 })
+
+# Compatibilidade retroativa (alguma integração pode referenciar o nome antigo).
+NON_COMMAND_TOOLS = READ_ONLY_TOOLS | WRITE_TOOLS
 
 
 # ---------------------------------------------------------------------------
@@ -537,9 +571,20 @@ VITAL_FILES = {
 _VITAL_GLOB_TARGETS = frozenset(VITAL_TOP_DIRS | {"home"})
 
 
+def _expand_home_vars(arg: str) -> str:
+    """Substitui `$HOME`/`${HOME}` pelo home real (melhora a resolução de caminhos).
+
+    Variáveis desconhecidas permanecem literais e são tratadas como "não
+    resolvidas" por `_has_unresolved_target` (forçando `force_ask`, nunca `allow`).
+    """
+    if "$" not in arg:
+        return arg
+    return arg.replace("${HOME}", str(HOME)).replace("$HOME", str(HOME))
+
+
 def _normalize_path(arg: str, cwd: Path) -> str:
-    """Expande ~, torna absoluto relativo ao cwd e normaliza .. (sem exigir existência)."""
-    p = Path(arg).expanduser()
+    """Expande ~/$HOME, torna absoluto relativo ao cwd e normaliza .. (sem exigir existência)."""
+    p = Path(_expand_home_vars(arg)).expanduser()
     if not p.is_absolute():
         p = cwd / p
     return os.path.normpath(str(p))
@@ -598,13 +643,16 @@ def _is_recursive_flag(a: str) -> bool:
 
 
 def _rm_is_destructive(args: list[str], cwd: Path) -> bool:
-    """rm é destrutivo quando o alvo aponta para caminho/arquivo vital."""
+    """rm é destrutivo quando o alvo aponta para caminho/arquivo vital.
+
+    Alvos com variável não resolvida (`$VAR`) NÃO são vetados aqui: como não é
+    possível saber o valor, eles caem em `force_ask` via `_has_unresolved_target`
+    (anti-fadiga v4.5.0: deny fica reservado à destruição cujo caminho literal
+    já é vital).
+    """
     targets = [a for a in args if not a.startswith("-")]
     if not targets:
         return False
-    # Variável não resolvida (pré-bash) em alvo de rm: conservador, veta.
-    if any("$" in a for a in targets):
-        return True
     recursive = any(_is_recursive_flag(a) for a in args)
     for a in targets:
         norm = _normalize_path(a, cwd)
@@ -631,12 +679,14 @@ def _find_is_destructive(args: list[str]) -> bool:
 
 
 def _shred_is_destructive(args: list[str], cwd: Path) -> bool:
-    """shred só é vetado para dispositivos de bloco (/dev/*) ou caminhos vitais."""
+    """shred só é vetado para dispositivos de bloco (/dev/*) ou caminhos vitais.
+
+    Alvos com `$VAR` não são vetados aqui (tratados como `force_ask` por
+    `_has_unresolved_target`).
+    """
     targets = [a for a in args if not a.startswith("-")]
     if not targets:
         return False
-    if any("$" in a for a in targets):
-        return True
     for a in targets:
         norm = _normalize_path(a, cwd)
         if norm.startswith("/dev/") or a.startswith("/dev/"):
@@ -716,6 +766,246 @@ _REDIRECT_SAFE_DEV = frozenset({
 
 _MUTATION_BINS = {"mv", "cp", "install", "truncate", "tee", "ln"}
 
+# Operações de mutação ampliadas (v4.5.0). Exigem parsing de flags próprio.
+_INPLACE_BINS = {"sed", "perl", "awk"}   # edição in-place (sed -i, perl -pi, gawk -i inplace)
+_EXTRACT_BINS = {"tar"}                  # extração que sobrescreve árvores (-x -C)
+_SYNC_BINS = {"rsync"}                   # sincronização cujo destino pode ser vital
+
+
+def _has_inplace_flag(args: list[str]) -> bool:
+    """True para `-i`, `-i.bak`, `--in-place[=suf]` e combinações curtas (`-pi`)."""
+    for a in args:
+        if a == "-i" or a.startswith("-i.") or a.startswith("--in-place"):
+            return True
+        if a.startswith("-") and not a.startswith("--") and "i" in a[1:]:
+            return True
+    return False
+
+
+def _inplace_file_operands(args: list[str]) -> list[str]:
+    """Operandos-arquivo de editores in-place (sed/perl/awk).
+
+    Descarta flags. Sem `-e`/`-f` explícito, o primeiro operando é o script
+    (`sed -i 's/a/b/' file`) e é descartado. O token `inplace` do gawk é ignorado.
+    """
+    has_expr = any(
+        a in {"-e", "-f"} or a.startswith("--expression") or a.startswith("--file")
+        for a in args
+    )
+    files: list[str] = []
+    script_consumed = has_expr
+    for a in args:
+        if a == "inplace":
+            continue
+        if a.startswith("-"):
+            continue
+        if not script_consumed:
+            script_consumed = True
+            continue
+        files.append(a)
+    return files
+
+
+def _inplace_is_destructive(binary: str, args: list[str], cwd: Path) -> bool:
+    if binary == "awk":
+        has_inplace = any(
+            args[i] == "-i" and i + 1 < len(args) and args[i + 1] == "inplace"
+            for i in range(len(args))
+        )
+        if not has_inplace:
+            return False
+    elif not _has_inplace_flag(args):
+        return False
+    return any(_path_is_vital(a, cwd) for a in _inplace_file_operands(args))
+
+
+def _tar_is_destructive(args: list[str], cwd: Path) -> bool:
+    """`tar` é mutação destrutiva quando extrai (-x) para/-C um diretório vital."""
+    extract = False
+    for a in args:
+        if a in {"--extract", "--get", "--untar"}:
+            extract = True
+        elif not a.startswith("-") and a.isalpha() and "x" in a:
+            extract = True  # estilo antigo: `tar xf`, `tar xzvf`
+        elif a.startswith("-") and not a.startswith("--") and "x" in a[1:]:
+            extract = True
+    if not extract:
+        return False
+    for i, a in enumerate(args):
+        dest = ""
+        if a in {"-C", "--directory"}:
+            dest = args[i + 1] if i + 1 < len(args) else ""
+        elif a.startswith("--directory="):
+            dest = a.split("=", 1)[1]
+        if dest and _path_is_vital(dest, cwd):
+            return True
+    return False
+
+
+# Flags do rsync que consomem o PRÓXIMO token como valor (não são caminhos).
+_RSYNC_VALUE_FLAGS = frozenset({
+    "-e", "--rsh", "-f", "--filter", "-M", "--remote-option",
+    "--exclude", "--include", "--exclude-from", "--include-from",
+    "--backup-dir", "--suffix", "--files-from", "--temp-dir", "-T",
+    "--link-dest", "--copy-dest", "--compare-dest", "--log-file",
+    "--password-file", "--chmod", "--chown", "--out-format", "--log-format",
+    "--bwlimit", "--timeout", "--contimeout", "--compress-level", "--partial-dir",
+})
+
+
+def _rsync_operands(args: list[str]) -> list[str]:
+    ops: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            ops.extend(args[i + 1:])
+            break
+        if a in _RSYNC_VALUE_FLAGS:
+            i += 2
+            continue
+        if a.startswith("--") and "=" in a:
+            i += 1
+            continue
+        if a.startswith("-") and a != "-":
+            i += 1
+            continue
+        ops.append(a)
+        i += 1
+    return ops
+
+
+def _rsync_is_destructive(args: list[str], cwd: Path) -> bool:
+    ops = _rsync_operands(args)
+    if len(ops) < 2:
+        return False
+    return _path_is_vital(ops[-1], cwd)
+
+
+def _mutation_is_destructive(binary: str, args: list[str], cwd: Path) -> bool:
+    operands = [a for a in args if not a.startswith("-")]
+    if binary == "mv":
+        # mv remove a origem vital (perda real do arquivo original).
+        return any(_path_is_vital(a, cwd) for a in operands)
+    if binary in {"cp", "install", "tee", "ln"}:
+        # Somente o destino importa: ler/symlinkar a partir de caminho vital
+        # (backup, `ln -s /usr/bin/x ~/.local/bin/`) é legítimo; sobrescrever
+        # um caminho vital não é.
+        dest = operands[-1] if operands else ""
+        return bool(dest) and _path_is_vital(dest, cwd)
+    if binary == "truncate":
+        return any(_path_is_vital(a, cwd) for a in operands)
+    if binary in _INPLACE_BINS:
+        return _inplace_is_destructive(binary, args, cwd)
+    if binary in _EXTRACT_BINS:
+        return _tar_is_destructive(args, cwd)
+    if binary in _SYNC_BINS:
+        return _rsync_is_destructive(args, cwd)
+    return False
+
+
+def _detect_mutation(cmd: str, cwd: Path) -> str | None:
+    """Retorna o binário/operador quando há mutação direta de caminho vital.
+
+    Os alvos de binário são lidos do comando BRUTO (o shlex preserva o conteúdo
+    entre aspas no token), garantindo que `cp x "/etc/fstab"` seja visto. Os
+    redirecionamentos usam a superfície sem aspas para não confundir `>` textual
+    dentro de strings.
+    """
+    surface = _regex_surface(cmd)
+    for target in _redirect_targets(surface):
+        if _path_is_vital(target, cwd):
+            return "redirect"
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary in _MUTATION_BINS or binary in _INPLACE_BINS \
+                or binary in _EXTRACT_BINS or binary in _SYNC_BINS:
+            if _mutation_is_destructive(binary, argv[1:], cwd):
+                return binary
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Anti-fadiga v4.5.0: alvo com variável não resolvida e limpeza de /var/log
+# ---------------------------------------------------------------------------
+
+# Operações cujos operandos podem conter variáveis não resolvidas em tempo de
+# hook (o valor só existe no shell do host).
+_UNRESOLVED_OPS = {
+    "rm", "rmdir", "mv", "cp", "install", "truncate", "tee", "ln", "shred",
+    "dd", "sed", "perl", "awk", "rsync", "tar", "chmod", "chown", "unlink",
+    "find",
+}
+
+
+def _has_unresolved_target(cmd: str, cwd: Path) -> bool:
+    """True se alguma operação de mutação/destruição tem alvo com `$VAR` literal.
+
+    Mesmo após expandir `$HOME`, a presença de `$` residual indica que o caminho
+    depende de estado do shell: não é possível provar que é seguro nem que é
+    destrutivo -> `force_ask` (nunca `allow`, nunca `deny` por engano).
+    """
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary not in _UNRESOLVED_OPS:
+            continue
+        for a in argv[1:]:
+            if a.startswith("-"):
+                continue
+            if "$" in _expand_home_vars(a):
+                return True
+    for target in _redirect_targets(_regex_surface(cmd)):
+        if "$" in _expand_home_vars(target):
+            return True
+    return False
+
+
+def _looks_like_path(a: str) -> bool:
+    """Heurística para distinguir operando-caminho de valor de flag (ex.: `-s 0`)."""
+    return a.startswith(("/", "~", "./", "../")) or "/" in a
+
+
+def _is_var_log_path(arg: str, cwd: Path) -> bool:
+    if "$" in _expand_home_vars(arg):
+        return False
+    norm = _normalize_path(arg, cwd)
+    return norm == "/var/log" or norm.startswith("/var/log/")
+
+
+def _varlog_cleanup_allowed(cmd: str, cwd: Path) -> bool:
+    """True quando a única mutação vital é truncar/redirecionar algo sob /var/log.
+
+    Limpeza de log (`truncate -s 0 /var/log/syslog`, `> /var/log/x.log`) é
+    operação administrativa rotineira: recebe `ask` (não `deny`). Qualquer outro
+    alvo no mesmo comando desqualifica a exceção.
+    """
+    saw = False
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary != "truncate":
+            continue
+        ops = [a for a in argv[1:] if not a.startswith("-") and _looks_like_path(a)]
+        if not ops:
+            return False
+        for a in ops:
+            if not _is_var_log_path(a, cwd):
+                return False
+        saw = True
+    for target in _redirect_targets(_regex_surface(cmd)):
+        if not _is_var_log_path(target, cwd):
+            return False
+        saw = True
+    return saw
+
 
 def _redirect_targets(surface: str) -> list[str]:
     """Alvos de redirecionamento de saída (`>`, `>>`) que criam/truncam arquivos.
@@ -732,45 +1022,18 @@ def _redirect_targets(surface: str) -> list[str]:
 
 
 def _path_is_vital(arg: str, cwd: Path) -> bool:
-    """True se `arg` aponta para caminho vital (nunca para nós de dispositivo benignos)."""
-    if "$" in arg:
-        return True  # variável não resolvida: conservador
+    """True se `arg` aponta para caminho vital (nunca para nós de dispositivo benignos).
+
+    Se, após expandir `$HOME`, restar alguma variável desconhecida, o caminho é
+    considerado NÃO resolvido (retorna False). A retenção desse caso é feita por
+    `_has_unresolved_target` (force_ask), mantendo o deny para caminhos literais.
+    """
+    if "$" in _expand_home_vars(arg):
+        return False
     norm = _normalize_path(arg, cwd)
     if norm in _REDIRECT_SAFE_DEV:
         return False
     return _is_vital_path(norm)
-
-
-def _mutation_is_destructive(binary: str, args: list[str], cwd: Path) -> bool:
-    operands = [a for a in args if not a.startswith("-")]
-    if binary == "mv":
-        # mv remove a origem vital (perda real do arquivo original).
-        return any(_path_is_vital(a, cwd) for a in operands)
-    if binary in {"cp", "install", "tee", "ln"}:
-        # Somente o destino importa: ler/symlinkar a partir de caminho vital
-        # (backup, `ln -s /usr/bin/x ~/.local/bin/`) é legítimo; sobrescrever
-        # um caminho vital não é.
-        dest = operands[-1] if operands else ""
-        return bool(dest) and _path_is_vital(dest, cwd)
-    if binary == "truncate":
-        return any(_path_is_vital(a, cwd) for a in operands)
-    return False
-
-
-def _detect_mutation(cmd: str, cwd: Path) -> str | None:
-    """Retorna o binário/operador quando há mutação direta de caminho vital."""
-    surface = _regex_surface(cmd)
-    for target in _redirect_targets(surface):
-        if _path_is_vital(target, cwd):
-            return "redirect"
-    for seg in _shell_split_commands(surface):
-        argv = _unwrap_privilege_prefix(_safe_split(seg))
-        if not argv:
-            continue
-        binary = argv[0].split("/")[-1]
-        if binary in _MUTATION_BINS and _mutation_is_destructive(binary, argv[1:], cwd):
-            return binary
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1100,14 +1363,27 @@ _PROTECTED_MENTION = re.compile(
     r'|scratch/security|bash-sudo-agents|hooks\.json'
 )
 
+# Remoção de raiz/vital por API de alto nível dentro de interpretadores inline
+# (v4.5.0). Cobre `shutil.rmtree`, `os.remove`, `fs.rmSync`, etc. Exige que o
+# alvo seja a raiz, um diretório vital ou `~`/`$HOME` — remoção de `/tmp/...` é
+# legítima e NÃO casa. O token `[*'"]?` tolera aspas já removidas pela desquotação.
+_INLINE_ROOT_DESTRUCTION = re.compile(
+    rf'\b(?:shutil\.rmtree|os\.rmtree|rmtree|rmSync|rmdirSync|unlinkSync'
+    rf'|os\.(?:remove|unlink|rmdir))\b'
+    rf'\s*\(?\s*[\'"]?\s*'
+    rf'(?:/(?:{_VITAL_ALT})\b|/(?=[\s,;)\'"]|$)|\*|~/?(?=[\s,;)\'"]|$)|\$HOME)'
+)
 
-def _detect_inline_interpreter(cmd: str) -> str | None:
+
+def _detect_inline_interpreter(cmd: str, cwd: Path) -> str | None:
     """
     Interpretadores inline (`python3 -c "..."`, `perl -e "..."`) escapam da
-    análise semântica baseada em argv. Se o código referenciar caminhos
-    protegidos, retorna:
-      - "deny":      referência à infraestrutura de governança;
-      - "force_ask": referência a caminho vital do sistema.
+    análise semântica baseada em argv. v4.5.0: além da menção textual a caminhos
+    protegidos, o CÓDIGO é desquotado e submetido às MESMAS detecções semânticas
+    do gate (destruição, mutação, permissões) e a `_INLINE_ROOT_DESTRUCTION`.
+    Retorna:
+      - "deny":      destruição de raiz/vital OU referência à governança;
+      - "force_ask": referência a caminho vital do sistema (sem destruição clara).
     """
     for seg in _shell_split_commands(cmd):
         argv = _unwrap_privilege_prefix(_safe_split(seg))
@@ -1121,9 +1397,154 @@ def _detect_inline_interpreter(cmd: str) -> str | None:
         code = " ".join(argv[1:])
         if GOV_PATTERN.search(code):
             return "deny"
+        # Desquota preservando o conteúdo: o interpretador avalia o texto, então
+        # `os.system('rm -rf /')` precisa ser visto como `os.system( rm -rf / )`.
+        dequoted = re.sub(r'[\'"]', " ", code)
+        if _INLINE_ROOT_DESTRUCTION.search(dequoted):
+            return "deny"
+        if (DESTRUCTIVE_PATTERN.search(dequoted)
+                or _detect_destructive(dequoted, cwd)
+                or _detect_mutation(dequoted, cwd)
+                or _detect_perm_abuse(dequoted, cwd)):
+            return "deny"
         if _PROTECTED_MENTION.search(code):
             return "force_ask"
     return None
+
+
+# ---------------------------------------------------------------------------
+# RULE-11/12 (v4.5.0): proteção de governança por CAMINHO RESOLVIDO
+# ---------------------------------------------------------------------------
+
+# Caminhos de workspace informados pelo payload (`workspacePaths`), usados para
+# proteger o `.agents/hooks.json` de cada projeto aberto.
+_WORKSPACE_PATHS: list[str] = []
+
+
+def _gov_roots() -> list[str]:
+    """Caminhos reais (realpath) da infraestrutura de governança."""
+    roots = [
+        PLUGIN_DIR,
+        SECURITY_DIR,
+        HOME / ".gemini" / "config" / "hooks.json",
+        HOME / ".gemini" / "config" / "agents",
+        HOME / ".gemini" / "config",
+    ]
+    for ws in _WORKSPACE_PATHS:
+        try:
+            roots.append(Path(ws) / ".agents" / "hooks.json")
+            roots.append(Path(ws) / ".agents")
+        except Exception:
+            pass
+    resolved: list[str] = []
+    for r in roots:
+        try:
+            resolved.append(os.path.realpath(str(r)))
+        except Exception:
+            resolved.append(str(r))
+    return resolved
+
+
+def _under(child: str, parent: str) -> bool:
+    child = child.rstrip("/") or "/"
+    parent = parent.rstrip("/") or "/"
+    if parent == "/":
+        return child.startswith("/")
+    return child == parent or child.startswith(parent + "/")
+
+
+def _canon_path(arg: str, cwd: Path) -> str:
+    """Normaliza e resolve symlinks (do diretório-pai quando o alvo não existe)."""
+    norm = _normalize_path(arg, cwd)
+    try:
+        if os.path.lexists(norm):
+            return os.path.realpath(norm)
+        parent = os.path.realpath(os.path.dirname(norm)) or os.path.dirname(norm)
+        return os.path.join(parent, os.path.basename(norm))
+    except Exception:
+        return norm
+
+
+def _is_gov_path(path: str) -> bool:
+    return any(_under(path, root) for root in _gov_roots())
+
+
+def _is_gov_ancestor(path: str) -> bool:
+    """True se `path` CONTÉM (é ancestral de) algum caminho de governança."""
+    if _is_gov_path(path):
+        return False
+    return any(_under(root, path) for root in _gov_roots())
+
+
+_GOV_MUTATION_BINS = {
+    "rm", "rmdir", "mv", "cp", "install", "truncate", "tee", "ln", "shred",
+    "dd", "sed", "perl", "tar", "rsync", "chmod", "chown", "unlink",
+}
+
+
+def _gov_mutation_targets(binary: str, args: list[str], cwd: Path) -> tuple[list[str], bool]:
+    """(alvos, recursivo) de uma operação de mutação, para fins de governança."""
+    recursive = any(
+        _is_recursive_flag(a) or _is_recursive_perm_flag(a) for a in args
+    )
+    if binary in {"sed", "perl"}:
+        if not _has_inplace_flag(args):
+            return [], recursive
+        return _inplace_file_operands(args), recursive
+    if binary == "tar":
+        dirs: list[str] = []
+        for i, a in enumerate(args):
+            if a in {"-C", "--directory"} and i + 1 < len(args):
+                dirs.append(args[i + 1])
+            elif a.startswith("--directory="):
+                dirs.append(a.split("=", 1)[1])
+        return dirs, True
+    if binary == "rsync":
+        ops = _rsync_operands(args)
+        return (ops[-1:] if ops else []), True
+    if binary == "dd":
+        return [a[len("of="):] for a in args if a.startswith("of=")], recursive
+    if binary in {"cp", "install", "tee", "ln"}:
+        ops = [a for a in args if not a.startswith("-")]
+        return (ops[-1:] if ops else []), recursive
+    if binary in {"chmod", "chown"}:
+        ops = [a for a in args if not a.startswith("-")]
+        return ops[1:], recursive
+    return [a for a in args if not a.startswith("-")], recursive
+
+
+def _detect_gov_mutation(cmd: str, cwd: Path) -> bool:
+    """True se alguma mutação/redirecionamento toca a infraestrutura de governança.
+
+    Acompanha `cd` dentro da MESMA linha (pseudo-cwd), resolve `$HOME` e symlinks
+    (`realpath`) e compara com os caminhos reais de governança. Remoção recursiva/
+    edição de um ANCESTRAL (ex.: `rm -rf ~/.gemini/config`) também é vetada.
+    """
+    cur = Path(cwd)
+    for seg in _shell_split_commands(cmd):
+        argv = _unwrap_privilege_prefix(_safe_split(seg))
+        if not argv:
+            continue
+        binary = argv[0].split("/")[-1]
+        if binary in {"cd", "pushd"} and len(argv) > 1:
+            try:
+                cur = Path(_normalize_path(argv[1], cur))
+            except Exception:
+                pass
+            continue
+        if binary in _GOV_MUTATION_BINS or binary in _MUTATION_BINS:
+            targets, recursive = _gov_mutation_targets(binary, argv[1:], cur)
+            for t in targets:
+                c = _canon_path(t, cur)
+                if _is_gov_path(c):
+                    return True
+                if recursive and _is_gov_ancestor(c):
+                    return True
+        for t in _redirect_targets(_regex_surface(seg)):
+            c = _canon_path(t, cur)
+            if _is_gov_path(c) or _is_gov_ancestor(c):
+                return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1166,9 +1587,15 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
     if destructive_bin or DESTRUCTIVE_PATTERN.search(surface):
         return "deny", "[governance-gate / RULE-02] Veto sumário: comando destrutivo detectado.", None
 
-    # RULE-02 estendida: mutação direta de caminho vital (mv/cp/truncate/tee/ln/redirect)
+    # RULE-02 estendida: mutação direta de caminho vital (mv/cp/truncate/tee/ln/sed
+    # -i/tar -x/rsync/redirect). Limpeza rotineira de log sob /var/log recebe "ask".
     mutation_bin = _detect_mutation(cmd, cwd)
     if mutation_bin:
+        if _varlog_cleanup_allowed(cmd, cwd):
+            return "ask", (
+                "[governance-gate / RULE-02] Truncamento/redirecionamento em /var/log "
+                "(limpeza de log) exige confirmação."
+            ), None
         return "deny", (
             f"[governance-gate / RULE-02] Veto: mutação direta de caminho vital "
             f"detectada ({mutation_bin})."
@@ -1199,19 +1626,31 @@ def audit_command(parsed: ParsedCommand, target_path: Path | None,
 
     # RULE-11 e RULE-12: Proteção de governança — avaliada ANTES da taxonomia de
     # privilégio, para que "sudo rm <arquivo do gate>" seja veto, não mero ask.
-    # Usa o comando BRUTO (não a superfície): falso positivo em path de governança
-    # entre aspas é aceitável; deixar passar não é.
-    if resolved_target and GOV_PATTERN.search(resolved_target):
+    # Primária: caminho RESOLVIDO (pseudo-cwd + realpath). Fallback: substring no
+    # comando bruto (mantido para caminhos de governança citados textualmente).
+    if resolved_target and (
+        GOV_PATTERN.search(resolved_target) or _is_gov_path(_canon_path(target_str, cwd))
+    ):
         return "deny", "[governance-gate / RULE-12] Escrita em arquivo de governança detectada.", None
+    if _detect_gov_mutation(cmd, cwd):
+        return "deny", "[governance-gate / RULE-12] Comando tenta modificar a infraestrutura de governança.", None
     if GOV_PATTERN.search(cmd) and WRITE_OPS_PATTERN.search(cmd):
         return "deny", "[governance-gate / RULE-12] Comando tenta modificar arquivo de governança.", None
 
     # Interpretadores inline sobre caminhos protegidos (escape do parser argc).
-    inline = _detect_inline_interpreter(cmd)
+    inline = _detect_inline_interpreter(cmd, cwd)
     if inline == "deny":
-        return "deny", "[governance-gate / RULE-12] Interpretador inline tentando manipular a infraestrutura de governança.", None
+        return "deny", "[governance-gate / RULE-12/RULE-02] Interpretador inline com destruição de raiz/vital ou manipulação da governança.", None
     if inline == "force_ask":
         return "force_ask", "[governance-gate / RULE-02] Interpretador inline referenciando caminho vital exige confirmação explícita.", None
+
+    # Anti-fadiga v4.5.0: alvo com variável não resolvida ($VAR) em operação de
+    # mutação/destruição — não é possível provar segurança => force_ask.
+    if _has_unresolved_target(cmd, cwd):
+        return "force_ask", (
+            "[governance-gate / RULE-02] Alvo com variável de shell não resolvida "
+            "em operação de mutação — confirmação explícita exigida."
+        ), None
 
     # RULE-15: Elevação de privilégio rotineira — decisão "ask" (respeita o
     # "Always Allow" nativo: aprova uma vez por recurso e não é mais perguntado).
@@ -1238,17 +1677,22 @@ def _emit_overwrite(new_cmd: str, rule: str, target_path: Path | None, cwd: Path
         audit_log("deny", f"Overwrite rejeitado: {mod_reason}", "OVERWRITE_REVALIDATION",
                   new_cmd, cwd_str, latency_ms)
         out("deny", f"Comando otimizado rejeitado na re-validação: {mod_reason}")
-    audit_log("allow", f"overwrite:{rule}", rule, new_cmd, cwd_str, latency_ms)
-    out("allow", "", overwrite={"CommandLine": new_cmd})
+    audit_log("auto_approve", f"overwrite:{rule}", rule, new_cmd, cwd_str, latency_ms)
+    out("auto_approve", "", overwrite={"CommandLine": new_cmd})
 
 
 def audit_and_optimize() -> None:
+    global _WORKSPACE_PATHS
     start_ms = _now_ms()
 
     try:
         raw_input = sys.stdin.read()
         if not raw_input.strip():
-            out("allow", "")
+            # P6 (v4.5.0): fail-closed também para stdin vazio. Antes retornava
+            # "allow" silencioso, o que viraria auto_approve de chamada indecifrável.
+            out("force_ask",
+                "[governance-gate] Payload vazio no stdin — schema inesperado; "
+                "confirmação humana exigida (fail-closed).")
         data = json.loads(raw_input)
     except Exception as e:
         out("force_ask", f"Failsafe: payload malformado ({str(e)}) — confirmação humana exigida.")
@@ -1267,6 +1711,12 @@ def audit_and_optimize() -> None:
     # Contrato de cwd: aceita data.cwd (topo) e toolCall.args.Cwd / cwd.
     cwd_str = (data.get("cwd") or args.get("Cwd") or args.get("cwd") or str(HOME))
     cwd = Path(cwd_str)
+
+    # Workspaces abertos (payload oficial `workspacePaths`): usados para proteger
+    # o `.agents/hooks.json` de cada projeto contra alteração pelo agente.
+    _ws = data.get("workspacePaths")
+    if isinstance(_ws, list):
+        _WORKSPACE_PATHS = [str(x) for x in _ws if isinstance(x, str)]
 
     cmd_hash = hashlib.sha256(f"{cwd_str}:{cmd}".encode("utf-8")).hexdigest()[:16]
 
@@ -1307,13 +1757,18 @@ def audit_and_optimize() -> None:
         out("ask", reason)
 
     # FAIL-CLOSED: payload válido, mas sem `CommandLine` reconhecível.
-    # Ferramentas de leitura/escrita conhecidas prosseguem (o `TargetFile` já foi
-    # auditado em `audit_command`); qualquer schema inesperado exige confirmação
-    # humana em vez de `allow` silencioso.
+    # Ferramentas de LEITURA conhecidas -> auto_approve (zero fricção, RULE-09).
+    # Ferramentas de ESCRITA/orquestração -> allow (delega ao review/diff nativo
+    # do host, honrando as regras explícitas do usuário — docs do Antigravity).
+    # Qualquer schema inesperado exige confirmação humana (nunca allow silencioso).
     if not cmd:
         latency_ms = _now_ms() - start_ms
-        if tool_name in NON_COMMAND_TOOLS:
-            audit_log("allow", "Ferramenta sem CommandLine (TargetFile auditado).",
+        if tool_name in READ_ONLY_TOOLS:
+            audit_log("auto_approve", "Ferramenta de leitura sem CommandLine (TargetFile auditado).",
+                      None, "", cwd_str, latency_ms)
+            out("auto_approve", "")
+        if tool_name in WRITE_TOOLS:
+            audit_log("allow", "Ferramenta de escrita/orquestração sem CommandLine (TargetFile auditado).",
                       None, "", cwd_str, latency_ms)
             out("allow", "")
         audit_log("force_ask", "Payload sem CommandLine reconhecível (fail-closed).",
@@ -1348,7 +1803,11 @@ def audit_and_optimize() -> None:
         if cache_file.exists() and cache_file.stat().st_size > 0:
             try:
                 mtime = cache_file.stat().st_mtime
-                if (time.time() - mtime) < ttl:
+                # Não confiar em `cat <cache>` cego: o arquivo precisa estar
+                # fisicamente sob CACHE_DIR (resiste a symlink/path inesperado).
+                if (time.time() - mtime) < ttl and _under(
+                        os.path.realpath(str(cache_file)),
+                        os.path.realpath(str(CACHE_DIR))):
                     _emit_overwrite(f"cat {shlex.quote(str(cache_file))}", "CACHE_HIT",
                                     target_path, cwd, _now_ms() - start_ms, cwd_str)
             except Exception:
@@ -1385,8 +1844,11 @@ def audit_and_optimize() -> None:
                             target_path, cwd, _now_ms() - start_ms, cwd_str)
 
     latency_ms = _now_ms() - start_ms
-    audit_log("allow", "", None, cmd, cwd_str, latency_ms)
-    out("allow", "")
+    # P1 (v4.5.0): comando auditado e seguro -> "auto_approve". "allow" apenas
+    # DELEGA à política padrão do host (que ainda prompta `run_command`); o valor
+    # que efetivamente pula o card de aprovação é "auto_approve".
+    audit_log("auto_approve", "allow:policy", None, cmd, cwd_str, latency_ms)
+    out("auto_approve", "")
 
 
 def main() -> None:

@@ -1,14 +1,14 @@
 <div align="center">
 
 # 🛡️ Antigravity Linux Governance
-### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Compressão e Cache Local (v4.4.0)*
+### *Agentes Autônomos de Terminal com Separação de Poderes, Motor Python Nativo, Auto-Approve, Auto-Compressão e Cache Local (v4.5.0)*
 
 [![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20Governance-blueviolet?style=for-the-badge&logo=diagramsdotnet)](https://github.com/nickarab/bash-sudo-agents)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Wayland%20%7C%20Hyprland-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/nickarab/bash-sudo-agents)
 [![Security Level](https://img.shields.io/badge/Governance-Semantic%20%2B%20Policy--as--Code-success?style=for-the-badge&logo=shield)](https://github.com/nickarab/bash-sudo-agents)
 [![Runtime Gate](https://img.shields.io/badge/Runtime%20Gate-Python%20PreToolUse-darkgreen?style=for-the-badge&logo=python)](https://github.com/nickarab/bash-sudo-agents)
 [![Optimizer](https://img.shields.io/badge/Tokens-Auto--Compressor%20%2B%20Cache-blue?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
-[![Tests](https://img.shields.io/badge/Tests-224%2F224%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
+[![Tests](https://img.shields.io/badge/Tests-259%2F259%20Passed-brightgreen?style=for-the-badge&logo=pytest)](https://github.com/nickarab/bash-sudo-agents)
 [![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20Pip%20(Pure%20Stdlib)-orange?style=for-the-badge)](https://github.com/nickarab/bash-sudo-agents)
 
 <p align="center">
@@ -36,8 +36,8 @@
 <table>
   <tr>
     <td width="50%">
-      <h3>🛡️ Camada de Governança Semântica & Taxonomia Anti-Fadiga</h3>
-      O operador de terminal (<code>@agente-bash</code>) é orientado por princípios estritos. Elevação rotineira usa <code>ask</code> (respeitando <i>Always Allow</i>), alto impacto usa <code>force_ask</code> e destruição real recebe <code>deny</code> via <code>governance-gate.py</code>.
+      <h3>🛡️ Camada de Governança Semântica & Taxonomia Anti-Fadiga REAL</h3>
+      Comandos seguros são emitidos como <code>auto_approve</code> (pula o card de aprovação padrão do host). Elevação rotineira usa <code>ask</code> (respeitando <i>Always Allow</i>), alto impacto usa <code>force_ask</code> e destruição real recebe <code>deny</code> via <code>governance-gate.py</code>. <code>allow</code> fica reservado às ferramentas de escrita (review/diff nativo).
     </td>
     <td width="50%">
       <h3>⚡ Auto-Compressor Sintático de Tokens</h3>
@@ -56,12 +56,12 @@
   </tr>
   <tr>
     <td width="50%">
-      <h3>🧱 Endurecimento Semântico (v4.4.x)</h3>
-      <code>deny</code> também para mutação direta de caminhos vitais (<code>mv</code>, <code>cp</code>, <code>install</code>, <code>truncate</code>, <code>tee</code>, <code>ln</code>, <code>&gt;</code>/<code>&gt;&gt;</code>) e recursão em <code>bash -c "..."</code>. Interpretadores inline (<code>python3 -c</code>, <code>perl -e</code>) referenciando caminhos protegidos são retidos.
+      <h3>🧱 Endurecimento Semântico (v4.5.0)</h3>
+      <code>deny</code> para mutação direta de caminhos vitais (<code>mv</code>, <code>cp</code>, <code>install</code>, <code>truncate</code>, <code>tee</code>, <code>ln</code>, <code>sed -i</code>, <code>tar -x -C</code>, <code>rsync</code>, <code>&gt;</code>/<code>&gt;&gt;</code>) e recursão em <code>bash -c "..."</code>. Interpretadores inline (<code>python3 -c</code>, <code>node -e</code>, <code>perl -e</code>) são desquotados e reanalisados: destruição de raiz/vital (<code>rm -rf /</code>, <code>rmtree('/')</code>) vira <code>deny</code>.
     </td>
     <td width="50%">
-      <h3>🚦 Fail-Closed & Superfície sem Aspas</h3>
-      Payload válido sem <code>CommandLine</code> reconhecível vira <code>force_ask</code> (nunca <code>allow</code> silencioso). Padrões de regex operam sobre uma superfície com strings literais removidas — sem falsos positivos em mensagens de commit — preservando substituições <code>$(...)</code> e crases.
+      <h3>🚦 Fail-Closed, Governança por Caminho e Auto-Approve</h3>
+      Payload válido sem <code>CommandLine</code> reconhecível (e stdin vazio) vira <code>force_ask</code> — nunca <code>allow</code> silencioso. A proteção de governança é por caminho resolvido (<code>realpath</code> + pseudo-cwd de <code>cd</code> + symlinks), então <code>cd ~/.gemini/config &amp;&amp; rm hooks.json</code> é vetado. Padrões de regex operam sobre superfície sem strings literais, preservando <code>$(...)</code> e crases.
     </td>
   </tr>
 </table>
@@ -79,7 +79,7 @@ flowchart TD
         Bash -->|"2. Disparo de Operação"| Gate{"🚧 governance-gate.py<br/>(Motor Python PreToolUse)"}
         
         Gate -->|"Cache Hit (TTL Válido)"| CacheRead["Leitura Instantânea de Cache"]
-        Gate -->|"allow: seguro / leitura livre"| OSExec["Execução no Linux"]
+        Gate -->|"auto_approve: seguro / leitura livre"| OSExec["Execução no Linux"]
         Gate -->|"ask: sudo / privilégio rotineiro"| AskGrant["Card Nativo c/ Always Allow"]
         Gate -->|"force_ask: disco / monitores / energia"| PromptUser["Confirmação Explícita Sempre"]
         Gate -->|"deny: rm -rf raiz / chmod 777 -R / gov"| HardBlock["🛑 Veto Imediato no Runtime (deny)"]
@@ -110,12 +110,13 @@ Este projeto é uma **Camada de Governança Semântica / guardrail de autonomia*
 **O que ele garante:**
 
 * Contenção consistente e auditável das operações de altíssimo risco (`rm -rf /`, `chmod -R 777 /etc`, formatação, energia, derrubada de sessão, edição dos arquivos de governança).
-* Taxonomia de decisão previsível (`allow` / `ask` / `force_ask` / `deny`) e registro em `audit.log`.
+* Taxonomia de decisão previsível (`auto_approve` / `ask` / `force_ask` / `deny`, além de `allow` para escrita) e registro em `audit.log`.
+* Execução sem fricção de comandos auditados e seguros: o motor emite `auto_approve` (o único valor do contrato do Antigravity que pula o card de aprovação padrão; `allow` apenas delega à política padrão).
 * Compressão de saída na fonte e cache local com TTL.
 
 **O que ele NÃO garante:**
 
-* Isolamento de processo, usuário, sistema de arquivos ou rede. Um comando que **não** case com as heurísticas (interpretadores, binários não cobertos, `mv`/`cp` para caminhos não mapeados, execução remota) pode passar. A escrita em arquivo vital via redirecionamento com **alvo entre aspas** e o uso de interpretadores sobre caminhos não mapeados são lacunas conhecidas.
+* Isolamento de processo, usuário, sistema de arquivos ou rede. Um comando que **não** case com as heurísticas (binários não cobertos, execução remota do tipo `curl | sh`, `bash arquivo.sh` com conteúdo malicioso) pode passar. A escrita em arquivo vital via redirecionamento com **alvo entre aspas** segue como lacuna conhecida.
 * Proteção contra engenharia social do LLM: aprovar **"Always Allow"** em um prompt `ask` de `sudo` libera as próximas elevações daquele recurso.
 
 Se você precisa de isolamento real, combine este guardrail com `bubblewrap`/`firejail`, `systemd-run`/cgroups, usuário dedicado, montagens read-only e/ou containers.
@@ -146,7 +147,7 @@ O motor `governance-gate.py` atua ativamente para reduzir o consumo de tokens an
 | Componente | Identidade | Nível de Acesso | Diretiva Primária |
 | :--- | :--- | :--- | :--- |
 | **`@agente-bash`** | **Operador de Terminal** (LLM) | Leitura irrestrita do SO / Shell sem privilégios | Executa diagnósticos ágeis, compacta saídas na fonte e conduz comandos no terminal. Mantém sessão contínua (*Modo Sticky*). |
-| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica em runtime as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de alto impacto (`force_ask`), elevação com *Always Allow* (`ask`), auto-compressão e cache com TTL. Fail-closed em schema desconhecido. |
+| **`governance-gate.py`** | **Motor de Runtime** (Hook SO) | Interceptador nativo `PreToolUse` no SO | Aplica em runtime as regras (RULE-01 a RULE-15), veto sumário a destruição (`deny`), retenção de alto impacto (`force_ask`), elevação com *Always Allow* (`ask`), **auto-aprovação de comandos seguros (`auto_approve`)**, auto-compressão e cache com TTL. Fail-closed em schema desconhecido e em stdin vazio. |
 | **`@agente-sudo-policy`** | **Gestor Constitucional** (LLM) | Monopólio legislativo exclusivo | Detém o monopólio exclusivo de legislar sobre as regras em `policies.json`, `meta_policies.json`, `AGENTS.md` e `hooks.json`. Segue o *Rito Proposta-Primeiro*. |
 
 ---
@@ -172,13 +173,26 @@ O motor `governance-gate.py` opera como camada de governança interceptando cada
 ### 📤 Saída (Stdout: Deliberação do Motor no Runtime)
 ```json
 {
-  "decision": "allow | ask | force_ask | deny",
+  "decision": "auto_approve | allow | ask | force_ask | deny",
   "reason": "Justificativa constitucional ou aviso de retenção (force_ask)",
   "overwrite": {
     "CommandLine": "comando otimizado ou redirecionado para cache"
   }
 }
 ```
+
+| `decision` | Efeito no Antigravity |
+| :--- | :--- |
+| `auto_approve` | **Aprova automaticamente** quando a política padrão promptaria — usado para comandos auditados e seguros, compressão e cache (zero fricção). |
+| `allow` | Apenas **delega** à política padrão do host (usado para ferramentas de escrita, que mostram o diff/review nativo). |
+| `ask` | Prompt com **"Always Allow"** (elevação rotineira). |
+| `force_ask` | Prompt **sempre** (disco, energia, monitores, governança). |
+| `deny` | Bloqueio imediato (destruição real, governança). |
+
+> **Matcher:** o hook é registrado com `"matcher": "*"` para auditar também os
+> alvos (`TargetFile`) de ferramentas de escrita/edição. Ferramentas de leitura
+> conhecidas recebem `auto_approve`; as de escrita, `allow`; e qualquer schema
+> desconhecido cai em `force_ask` (fail-closed).
 
 ---
 
@@ -192,18 +206,18 @@ As diretrizes do sistema residem em [`security/policies.json`](security/policies
 
 | Código | Nome da Regra | Severidade | Efeito Prático | Fiscalização |
 | :---: | :--- | :---: | :--- | :---: |
-| **`RULE-01`** | **Soberania do Display** | `CRITICAL` | Leitura de `monitors.lua` é livre (`allow`); edição/escrita exige confirmação humana. | **Hook `force_ask`** |
-| **`RULE-02`** | **Anti-Destruição** | `CRITICAL` | Bloqueio de deleção recursiva indiscriminada na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/root`, `/opt`, `/srv`, `/mnt`, ...). Cobre também mutação direta (`mv`, `cp`, `truncate`, `tee`, `ln`, `>`/`>>`) e recursão em `bash -c "..."`. | **Hook `deny` sumário** |
+| **`RULE-01`** | **Soberania do Display** | `CRITICAL` | Leitura de `monitors.lua` é livre (`auto_approve`); edição/escrita exige confirmação humana. | **Hook `force_ask`** |
+| **`RULE-02`** | **Anti-Destruição** | `CRITICAL` | Bloqueio de deleção recursiva indiscriminada na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/root`, `/opt`, `/srv`, `/mnt`, ...). Cobre também mutação direta (`mv`, `cp`, `truncate`, `tee`, `ln`, `sed -i`, `tar -x -C`, `rsync`, `>`/`>>`) e recursão em `bash -c "..."` e interpretadores inline. Alvo com `$VAR` não resolvido vira `force_ask`; limpeza de `/var/log` vira `ask`. | **Hook `deny` sumário** |
 | **`RULE-03`** | **Operações de Disco** | `CRITICAL` | Comandos `mkfs`, `fdisk`, `cryptsetup`, `dd` exigem alvo explícito e blindam partições ativas (`/`, `/boot`). | **Hook `force_ask`** |
 | **`RULE-04`** | **Escopo Estrito** | `HIGH` | O comando com privilégio deve ater-se exclusivamente à necessidade da tarefa solicitada. | `governance-gate` |
 | **`RULE-05`** | **Preservação de Permissões** | `HIGH` | Veto semântico a permissões recursivas abusivas (`chmod -R 777`, `chmod 777 -R`, `a+w` ou `chown -R` no sistema). | **Hook `deny`** |
 | **`RULE-06`** | **Sigilo de Credenciais** | `HIGH` | Enforce de `HISTFILE=/dev/null`. Descontinuação e veto permanente a runners com senhas locais. | **Hook `deny`** |
 | **`RULE-07`** | **Anti-Crash & Energia** | `HIGH` | Proibido derrubar/reiniciar sessão gráfica (`deny`); `reboot`/`poweroff`/`suspend` exigem confirmação (`force_ask`). | **Hook `deny` / `force_ask`** |
 | **`RULE-08`** | **Mitigação Ativa** | `MEDIUM` | Remodelação autônoma orientada pelo parecer técnico de veto sem transferir ruído ao usuário. | Loop Auto-Adaptação |
-| **`RULE-09`** | **Franquia de Diagnóstico** | `INFO` | Acesso instantâneo e livre para ler métricas, sensores, hardware e logs da máquina. | Execução Livre |
+| **`RULE-09`** | **Franquia de Diagnóstico** | `INFO` | Acesso instantâneo e livre para ler métricas, sensores, hardware e logs da máquina. | Execução Livre (`auto_approve`) |
 | **`RULE-10`** | **Regra 3X (Teto de Recusas)** | `CRITICAL` | Limite de 3 rejeições consecutivas. Na 3ª recusa, suspensão imediata e alerta de escalação. | Loop Auto-Adaptação (3X) |
 | **`RULE-11`** | **Monopólio Legislativo** | `CRITICAL` | Exclusividade legislativa do `@agente-sudo-policy`. Veto de escrita nos caminhos de governança. | **Hook `deny`** |
-| **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos e `hooks.json` mantidos em `chmod 444`, protegidos por `deny` no hook `PreToolUse` (`governance-gate.py`). | **Hook `deny`** |
+| **`RULE-12`** | **Blindagem de Governança** | `CRITICAL` | Arquivos e `hooks.json` mantidos em `chmod 444`, protegidos por `deny` no hook `PreToolUse` (`governance-gate.py`). A checagem é por **caminho resolvido** (`realpath` + pseudo-cwd de `cd` + symlinks). | **Hook `deny`** |
 | **`RULE-13`** | **Modo Sticky Automático** | `MANDATORY` | O `@agente-bash` assume a sessão contínua até saída explícita ou invocação de outro agente. | Sessão Contínua |
 | **`RULE-14`** | **Rito Proposta-Primeiro** | `CRITICAL` | Propostas de regras geram apenas texto no chat; modificações em disco exigem autorização expressa. | **Hook + Política** |
 | **`RULE-15`** | **Taxonomia Privilegiada** | `HIGH` | Elevação rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `yay/pacman -S*`) com suporte a *Always Allow*. | **Hook `ask`** |
@@ -236,13 +250,13 @@ cd bash-sudo-agents
 
 ## 🧪 Suíte de Testes e Validação
 
-O framework conta com **224 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, mutação de caminhos vitais, interpretadores inline, fail-closed de schema, falsos positivos de aspas, taxonomia `ask`/`force_ask`/`deny`, caminhos de governança, permissões semânticas e compressão:
+O framework conta com **259 verificações automatizadas** cobrindo injeção de comandos, recursão destrutiva, mutação de caminhos vitais (incl. `sed -i`/`tar`/`rsync`), interpretadores inline destrutivos, fail-closed de schema e stdin, falsos positivos de aspas, taxonomia `auto_approve`/`ask`/`force_ask`/`deny`, governança por caminho resolvido, variáveis não resolvidas, limpeza de `/var/log`, permissões semânticas e compressão:
 
 ```bash
-# 1. Executar verificador rápido de bypass e regressão (104 testes Zero-Pip / Stdlib pura)
+# 1. Executar verificador rápido de bypass e regressão (122 testes Zero-Pip / Stdlib pura)
 python3 tests/verify_fixes.py
 
-# 2. Executar suíte completa de testes unitários (120 testes via pytest)
+# 2. Executar suíte completa de testes unitários (137 testes via pytest)
 pytest tests/test_governance_gate.py
 ```
 
@@ -255,11 +269,12 @@ bash-sudo-agents/
 ├── 📄 .gitignore                  # Proteção contra vazamento de arquivos locais
 ├── ⚙️ install.sh                  # Instalador universal automatizado com backup atômico
 ├── 📘 README.md                   # Esta documentação executiva
-├── 🧪 tests/                      # Suíte de testes automatizados (224 verificações)
-│   ├── test_governance_gate.py    # 120 testes unitários (pytest)
-│   └── verify_fixes.py            # 104 testes de segurança sem dependências externas
+├── 📝 CHANGELOG.md                # Histórico de versões (v4.5.0)
+├── 🧪 tests/                      # Suíte de testes automatizados (259 verificações)
+│   ├── test_governance_gate.py    # 137 testes unitários (pytest)
+│   └── verify_fixes.py            # 122 testes de segurança sem dependências externas
 ├── 🧩 plugin/
-│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.4.0)
+│   ├── plugin.json                # Manifesto oficial do plugin Antigravity (v4.5.0)
 │   ├── hooks.json                 # Template do hook (`__GATE_PATH__` -> caminho absoluto na instalação)
 │   ├── agents/                    # Agentes nativos declarados no ecossistema Antigravity
 │   │   ├── agente-bash.md         # Agente nativo: Operador de Terminal

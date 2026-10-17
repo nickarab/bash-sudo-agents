@@ -1,5 +1,5 @@
 """
-test_governance_gate.py — Suíte de testes para governance-gate.py (v4.4.0)
+test_governance_gate.py — Suíte de testes para governance-gate.py (v4.5.0)
 
 Cobre todos os vetores de bypass identificados na auditoria:
 - Command injection no wrapper de cache
@@ -499,10 +499,10 @@ class TestIntegrationSubprocess:
     """Testes de ponta-a-ponta executando o script como subprocesso."""
 
     def test_allow_safe_command(self, tmp_home, monkeypatch):
-        """Comando seguro é permitido."""
+        """Comando seguro é auto-aprovado (v4.5.0: anti-fadiga real)."""
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate("lscpu", cwd=str(tmp_home))
-        assert result.get("decision") == "allow"
+        assert result.get("decision") == "auto_approve"
 
     def test_deny_rm_rf_root(self, tmp_home, monkeypatch):
         """rm -rf / é negado via subprocesso."""
@@ -527,8 +527,8 @@ class TestIntegrationSubprocess:
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate("cat file.txt", target="../../../etc/shadow", cwd=str(tmp_home))
         # O TargetFile fora do escopo retorna None, então não é protegido por RULE-12
-        # mas o comando em si é seguro -> allow
-        assert result.get("decision") in ("allow", "force_ask")
+        # mas o comando em si é seguro -> auto_approve (v4.5.0)
+        assert result.get("decision") in ("auto_approve", "allow", "force_ask")
 
     def test_audit_log_fields(self, tmp_home, monkeypatch):
         """O log de auditoria contém decision, rule, cmd_hash, latency_ms."""
@@ -917,7 +917,7 @@ class TestV440HardeningAndAntiFatigue:
     def test_pacman_search_cache_wrap_includes_limiter(self, tmp_home, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_home))
         result = run_gate("pacman -Ss firefox", cwd=str(tmp_home))
-        assert result.get("decision") == "allow"
+        assert result.get("decision") == "auto_approve"
         ow = result.get("overwrite", {}).get("CommandLine", "")
         assert "head -n 25" in ow and "tee" in ow
 
@@ -1037,10 +1037,15 @@ class TestVitalMutation:
             "tee /etc/hosts",
             "ln -sf /tmp/x /etc/passwd",
             "echo x > /etc/fstab",
-            "echo x >> /var/log/syslog",
         ):
             decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
             assert decision == "deny", cmd
+
+    def test_varlog_cleanup_is_ask_not_deny(self):
+        """v4.5.0: truncar/redirecionar sob /var/log é ask (limpeza rotineira)."""
+        for cmd in ("echo x >> /var/log/syslog", "truncate -s 0 /var/log/syslog"):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "ask", cmd
 
     def test_shell_dash_c_recursion_denied(self):
         for cmd in ('bash -c "rm -rf /"', 'sh -c "mv /etc/hosts /tmp"'):
@@ -1065,12 +1070,21 @@ class TestInlineInterpreter:
 
     def test_inline_vital_force_ask(self):
         for cmd in (
-            'python3 -c "import shutil; shutil.rmtree(\'/etc\')"',
             'perl -e "unlink(\'/etc/passwd\')"',
             'ruby -e "File.delete(\'/etc/fstab\')"',
         ):
             decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
             assert decision == "force_ask", cmd
+
+    def test_inline_destruction_denied(self):
+        """v4.5.0 / P2: remoção explícita de raiz/vital no código -> deny."""
+        for cmd in (
+            'python3 -c "import shutil; shutil.rmtree(\'/etc\')"',
+            'python3 -c "import os; os.system(\'rm -rf /\')"',
+            'node -e \'require("fs").rmSync("/", {recursive:true})\'',
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
 
     def test_inline_governance_denied(self):
         cmd = 'python3 -c "open(\'/home/user/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate.py\',\'w\')"'
@@ -1081,3 +1095,111 @@ class TestInlineInterpreter:
         for cmd in ('python3 -c "print(1)"', 'python3 -m pytest', 'node -e "console.log(1)"'):
             decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
             assert decision == "allow", cmd
+
+
+# ---------------------------------------------------------------------------
+# 21. v4.5.0 — correções P1..P6 (auto_approve, inline, gov por path,
+#     mutação ampliada, anti-fadiga e fail-closed de stdin)
+# ---------------------------------------------------------------------------
+
+class TestV450Fixes:
+    """Regressões dos seis problemas corrigidos na v4.5.0."""
+
+    # --- P1: anti-fadiga real (allow -> auto_approve) ---
+    def test_safe_command_auto_approve(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        assert run_gate("ls -la", cwd=str(tmp_home)).get("decision") == "auto_approve"
+
+    def test_read_only_tool_auto_approve(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        r = run_gate_payload({
+            "toolCall": {"name": "view_file", "args": {"AbsolutePath": str(tmp_home / "x.txt")}},
+        })
+        assert r.get("decision") == "auto_approve"
+
+    def test_multi_replace_write_tool_allow(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        r = run_gate_payload({
+            "toolCall": {"name": "multi_replace_file_content", "args": {"TargetFile": str(tmp_home / "main.rs")}},
+        })
+        assert r.get("decision") == "allow"
+
+    def test_find_by_name_not_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        r = run_gate_payload({"toolCall": {"name": "find_by_name", "args": {"Pattern": "*.rs"}}})
+        assert r.get("decision") == "auto_approve"
+
+    def test_overwrite_is_auto_approve(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        r = run_gate("git log", cwd=str(tmp_home))
+        assert r.get("decision") == "auto_approve"
+        assert "-n 15" in r.get("overwrite", {}).get("CommandLine", "")
+
+    # --- P3: governança por caminho resolvido ---
+    def test_cd_into_gov_and_rm_denied(self, tmp_home):
+        cmd = f"cd {tmp_home}/.gemini/config && rm hooks.json"
+        decision, _, _ = gg.audit_command(gg.parse_command(cmd), None, tmp_home)
+        assert decision == "deny"
+
+    def test_rm_gov_ancestor_denied(self, tmp_home):
+        cmd = f"cd {tmp_home} && rm -rf .gemini/config"
+        decision, _, _ = gg.audit_command(gg.parse_command(cmd), None, tmp_home)
+        assert decision == "deny"
+
+    def test_homonym_hooks_json_allowed(self, tmp_home):
+        (tmp_home / "projetos").mkdir(exist_ok=True)
+        cmd = f"cd {tmp_home}/projetos && rm hooks.json"
+        decision, _, _ = gg.audit_command(gg.parse_command(cmd), None, tmp_home)
+        assert decision == "allow"
+
+    def test_gov_via_symlink_denied(self, tmp_home):
+        gov = tmp_home / ".gemini" / "config" / "plugins" / "bash-sudo-agents"
+        gov.mkdir(parents=True, exist_ok=True)
+        link = tmp_home / "atalho"
+        os.symlink(str(gov), str(link))
+        decision, _, _ = gg.audit_command(gg.parse_command(f"rm {link}/hooks.json"), None, tmp_home)
+        assert decision == "deny"
+
+    # --- P4: mutação vital ampliada ---
+    def test_sed_tar_rsync_vital_denied(self):
+        for cmd in (
+            "sed -i 's/a/b/' /etc/hosts",
+            "perl -pi -e 's/a/b/' /etc/hosts",
+            "tar xf /tmp/x.tar -C /etc",
+            "rsync -a /tmp/x/ /etc/",
+            'cp x "/etc/fstab"',
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "deny", cmd
+
+    def test_readonly_and_benign_variants_allowed(self):
+        for cmd in (
+            "sed -n '1,10p' /etc/hosts",
+            "tar xf arquivo.tar",
+            "rsync -a ./src/ ./build/",
+            "grep -i host /etc/hosts",
+            'git commit -m "cp x /etc/fstab"',
+        ):
+            decision, _, _ = call_audit_command(gg.parse_command(cmd), None, Path("/home/user"))
+            assert decision == "allow", cmd
+
+    # --- P5: anti-fadiga ($VAR -> force_ask; /var/log -> ask) ---
+    def test_unresolved_var_is_force_ask(self):
+        for cmd in ("cp app.tar.gz $DIST_DIR/", "mv $BUILD/out ./", "echo x > $LOG/file"):
+            decision, _, _ = call_audit_command(
+                gg.parse_command(cmd), None, Path("/home/user/proj")
+            )
+            assert decision == "force_ask", cmd
+
+    def test_literal_vital_still_denied(self):
+        decision, _, _ = call_audit_command(gg.parse_command("rm -rf /etc/foo"), None, Path("/home/user"))
+        assert decision == "deny"
+
+    # --- P6: fail-closed de stdin ---
+    def test_empty_stdin_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        assert run_gate_raw("").get("decision") == "force_ask"
+
+    def test_whitespace_stdin_force_ask(self, tmp_home, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_home))
+        assert run_gate_raw("   \n\t ").get("decision") == "force_ask"

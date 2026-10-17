@@ -3,6 +3,74 @@
 Todo o histórico relevante do **Antigravity Linux Governance**. Formato baseado em
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [5.0.0] - 2026-10-17
+
+**Migração total do motor de governança para Go nativo.** O runtime Python
+(`plugin/hooks/governance-gate.py`, 1.871 linhas) foi substituído por um binário
+estático (`cmd/governance-gate` + `pkg/*`), sem Python no caminho crítico.
+
+### Adicionado
+
+- **Parser de shell por AST** (`pkg/shparse`, `mvdan.cc/sh/v3/syntax`): as
+  detecções operam sobre nós semânticos, não sobre regex de texto.
+- **`pkg/pathx`**: API única de resolução de caminhos (vitais e governança),
+  segment-aware (`filepath.Rel`), com `EvalSymlinks` do ancestral existente e
+  `SymlinkAmbiguous` (ELOOP) tratado como incerteza.
+- **`pkg/state`**: contador 3X serializado por `flock` + `rename` atômico; estado
+  corrompido é tratado como suspeito (≥1), nunca zerado.
+- **`pkg/cache`**: cache em `/tmp/antigravity-gate-cache-<uid>` (0700), escrita
+  atômica via o subcomando `governance-gate cache-write` (fim do `tee`),
+  validação de TTL no corpo e `sha256` do conteúdo.
+- **Subcomandos** `cache-write`, `render-hooks` (gera o `hooks.json` sem
+  `sed`/`jq`/Python) e `version`.
+- **Corpus golden** `cmd/governance-gate/testdata/cases.jsonl` + suíte
+  table-driven (`pkg/evaluator/rules_test.go`) e testes por pacote.
+- **Guarda de pânico** (`recover`) e deadline cooperativo: qualquer falha interna
+  vira `force_ask`.
+
+### Corrigido (bypasses e falhas confirmados na análise)
+
+- **`su -c "rm -rf /"`** e demais `-c` atrás de env/variável agora são recursados
+  (`deny`, não `ask`).
+- **Redirecionamento com fd explícito** (`1>/etc/fstab`, `2>/etc/x`) agora é
+  vetado — o regex legado os ignorava.
+- **Symlink para caminho vital** (`ln -s /etc x && rm -rf x`) agora é resolvido e
+  vetado.
+- **Heredoc de interpretador** (`python3 - <<'EOF' ... rm -rf /`) é analisado.
+- **Recursão profunda** (`bash -c "bash -c ..."`) satura em `force_ask` em vez de
+  `allow` silencioso (fail-closed de análise).
+- **Concorrência**: eliminados os `lost update` e as leituras de JSON truncado do
+  contador 3X e do cache (flock + rename).
+- **Fail-open de encoding**: stdout é byte-stream; o alerta de escalação 3X não
+  pode mais morrer em locale non-UTF8.
+- **Falsos positivos de prefixo** do compressor (`journalctl_evil`,
+  `git loganything`) eliminados.
+- **`$'...'` (ANSI-C quoting)** é decodificado antes da auditoria.
+
+### Alterado
+
+- **RULE-01 (monitores)** foi **retirada do portfólio do motor de runtime**:
+  permanece como diretriz constitucional, mas o hook não emite mais `force_ask`
+  para edição de `monitors.lua`.
+- Taxonomia preservada: `auto_approve` (comandos seguros/cache/compressão),
+  `ask` (elevação rotineira com *Always Allow*), `force_ask` (disco, energia,
+  governança, `$VAR` não resolvido), `deny` (destruição e governança).
+- Estado de runtime migrado de `~/.cache/antigravity/bash_agents` para
+  `/tmp/antigravity-gate-cache-<uid>`; `audit.log` continua em JSONL.
+
+### Removido
+
+- `plugin/hooks/governance-gate.py`, `tests/test_governance_gate.py`,
+  `tests/verify_fixes.py`, `.pytest_cache/` e `__pycache__/`.
+- Blocos `python3`/version-check/heredoc do `install.sh`.
+
+### Testes
+
+- `go vet ./...` limpo; `go test ./...` e `go test -race ./...` verdes.
+- Meta de paridade: todo o corpus do `verify_fixes.py`/`pytest` v4.5.0 foi portado
+  para `rules_test.go` + `testdata/cases.jsonl`, mais os novos casos de regressão
+  dos bypasses acima.
+
 ## [4.5.0] - 2026-10-16
 
 Correção dos seis problemas identificados na auditoria de runtime. Foco em

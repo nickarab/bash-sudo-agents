@@ -1,0 +1,17 @@
+{
+  "top_dirs": [
+    "boot", "etc", "usr", "var", "sys", "proc", "dev", "bin", "sbin",
+    "lib", "lib64", "root", "opt", "srv", "mnt"
+  ],
+  "files": [
+    "/etc/passwd", "/etc/shadow", "/etc/gshadow", "/etc/group",
+    "/etc/fstab", "/etc/crypttab", "/etc/sudoers", "/etc/sudoers.d",
+    "/etc/hostname", "/etc/hosts", "/etc/resolv.conf",
+    "/boot/grub/grub.cfg", "/boot/grub2/grub.cfg",
+    "/etc/ssh/sshd_config", "/etc/ssh/ssh_config"
+  ],
+  "redirect_safe_dev": [
+    "/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom",
+    "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/tty"
+  ]
+}

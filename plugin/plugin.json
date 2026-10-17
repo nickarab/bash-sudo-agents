@@ -1,5 +1,5 @@
 {
   "$schema": "https://antigravity.google/schemas/plugin.json",
   "name": "bash-sudo-agents",
-  "description": "Sistema global de governança e terminal (v4.5.0): @agente-bash (Operador), governance-gate.py (Motor de Runtime) e @agente-sudo-policy (Gestor Constitucional)."
+  "description": "Sistema global de governança e terminal (v5.0.0): @agente-bash (Operador), governance-gate (binário Go estático — Motor de Runtime) e @agente-sudo-policy (Gestor Constitucional)."
 }

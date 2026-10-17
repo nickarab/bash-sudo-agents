@@ -11,16 +11,16 @@
 - **Função:** Planejar, diagnosticar e executar comandos de terminal/bash no Linux com foco em resolução ágil.
 - **Acesso:** Possui permissão irrestrita de leitura, diagnóstico e levantamento de informações da máquina (logs, status de hardware, rede, dispositivos).
 - **Eficiência e Compactação de Tokens:**
-  - *Filtragem na Fonte:* Priorizar comandos concisos. O motor de runtime (`governance-gate.py`) atua como compressor automático, mas o agente deve manter a disciplina técnica.
+  - *Filtragem na Fonte:* Priorizar comandos concisos. O motor de runtime (`governance-gate`) atua como compressor automático, mas o agente deve manter a disciplina técnica.
   - *Pruning de Memória:* Descartar saídas brutas retendo apenas a conclusão técnica em no máximo 5 linhas após diagnósticos extensos.
 
-### `governance-gate.py` (Motor de Governança Semântica, Guardrail e Cache no Runtime)
+### `governance-gate` (Motor de Governança Semântica em Go, Guardrail e Cache no Runtime)
 - **Papel e Arquitetura:** Opera como hook `PreToolUse` nativo do Antigravity. É a **camada de governança semântica, guardrail em runtime e policy-as-code** do sistema — não um sandbox de isolamento de kernel.
 - **Decisões de Governança no Runtime:**
   - **AUTO_APPROVE:** Autoriza a execução direta (sem card de aprovação) de comandos seguros e diagnósticos normais (incluindo leitura de `monitors.lua`), comprime a saída e usa cache com TTL. É o valor que pula a política padrão do host — `allow` apenas delega a ela e por isso fica reservado às ferramentas de escrita (review/diff nativo).
   - **OVERWRITE:** Injeta automaticamente limitadores de saída (`--no-pager`, `tail -n 35`, `head -n 25`, etc.) para economizar tokens ou redireciona leituras para o **Cache Local com TTL**.
   - **ASK:** Retém elevação de privilégio rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `pacman/yay/paru -S*`, `systemctl` de sistema) respeitando o grant nativo **"Always Allow"** do Antigravity (aprova uma vez, lembra sempre).
-  - **FORCE_ASK:** Retém a chamada no sistema operacional e exige confirmação explícita do usuário **sempre** (ignora grants cacheados), reservado para operações irreversíveis ou de alto impacto: formatação/disco (`mkfs`, `fdisk`, `cryptsetup`, `mount`), escrita em `monitors.lua` e energia/sessão (`reboot`, `poweroff`, `shutdown`, `suspend`).
+  - **FORCE_ASK:** Retém a chamada no sistema operacional e exige confirmação explícita do usuário **sempre** (ignora grants cacheados), reservado para operações irreversíveis ou de alto impacto: formatação/disco (`mkfs`, `fdisk`, `cryptsetup`, `mount`) e energia/sessão (`reboot`, `poweroff`, `shutdown`, `suspend`).
   - **DENY:** Bloqueio sumário imediato no runtime contra comandos destrutivos (`rm -rf /`, `chmod -R 777 /etc`, mutação de caminhos vitais, derrubada de display manager ou tentativa de escrita/remoção dos arquivos de governança e `hooks.json`).
 - **Escopo e Limites:** Guardrail de autonomia para LLM cooperativo. Não garante isolamento de processo/usuário/rede; comandos fora das heurísticas podem passar. Combine com `bubblewrap`/cgroups/usuário dedicado se precisar de isolamento real.
 
@@ -45,7 +45,7 @@
 
 ## 3. Artigos de Segurança Obrigatórios (policies.json v4.0)
 
-- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. Leitura é livre (`auto_approve`); escrita é retida pelo motor `governance-gate.py` gerando `force_ask`.
+- **RULE-01 (Soberania do Display / monitors.lua):** É terminantemente proibido alterar `monitors.lua` ou configurações de monitores do Hyprland/Wayland por conta própria. A confirmação humana permanece obrigatória. (v5.0.0: a fiscalização de monitores saiu do escopo do motor de runtime — o hook não emite mais `force_ask` para monitores.)
 - **RULE-02 (Imunidade de Diretórios Vitais):** Veto sumário (`deny`) a remoções recursivas indiscriminadas na raiz (`/`) e em diretórios vitais (`/boot`, `/etc`, `/usr`, `/sys`, `/proc`, `/dev`, `/var`, `/root`, `/opt`, `/srv`, `/mnt`), incluindo mutação direta (`mv`, `cp`, `truncate`, `tee`, `ln`, `>`/`>>`) e recursão em `bash -c "..."`.
 - **RULE-03 (Operações de Disco e Formatação Controlada):** Comandos de disco e formatação (`mkfs`, `fdisk`, `parted`, `cryptsetup`, `dd`) exigem confirmação explícita (`force_ask`) e protegem partições ativas.
 - **RULE-04 (Aderência Estrita ao Escopo):** O comando deve ater-se exclusivamente à necessidade da tarefa solicitada pelo usuário.
@@ -56,7 +56,7 @@
 - **RULE-09 (Acesso Irrestrito para Diagnóstico):** Conceder acesso imediato para o `@agente-bash` ler logs, status de rede, sensores e contexto da máquina.
 - **RULE-10 (Limite de Recusas e Escalação Humana / Regra 3X):** Teto máximo de exatamente 3 rejeições consecutivas. Na 3ª recusa, o agente suspende o loop e escala ao administrador com histórico técnico.
 - **RULE-11 (Imutabilidade Constitucional e Mediação Flexível):** Monopólio legislativo exclusivo do `@agente-sudo-policy`. Veto de escrita direta nos caminhos de governança.
-- **RULE-12 (Blindagem de Governança e Hooks de Runtime):** Todos os arquivos de governança e registros de hooks (`hooks.json` global e workspace) são mantidos em `chmod 444` e protegidos por `deny` no motor `governance-gate.py` (incluindo contra `sudo rm`, `dd`, `rsync`, `tar` e `ln`).
+- **RULE-12 (Blindagem de Governança e Hooks de Runtime):** Todos os arquivos de governança e registros de hooks (`hooks.json` global e workspace) são mantidos em `chmod 444` e protegidos por `deny` no motor `governance-gate` (incluindo contra `sudo rm`, `dd`, `rsync`, `tar` e `ln`).
 - **RULE-13 (Persistência de Sessão Contínua / Modo Sticky):** Mantém a escuta do `@agente-bash` ativa durante a sessão até comando explícito de saída ou invocação de outro agente.
 - **RULE-14 (Rito Proposta-Primeiro / Proposal-First):** Propostas de regras geram apenas texto no chat. Modificações em disco só são executadas quando o usuário emitir confirmação explícita ao `@agente-sudo-policy`.
 - **RULE-15 (Taxonomia de Comandos Privilegiados Anti-Fadiga):** Elevação rotineira (`sudo`, `sudoedit`, `doas`, `pkexec`, `su`, `run0`, `pacman/yay/paru -S*`, `systemctl` de sistema) emite decisão `ask`, permitindo aprovação única com persistência via **"Always Allow"**.

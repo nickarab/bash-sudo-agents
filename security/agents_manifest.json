@@ -1,7 +1,7 @@
 {
   "system": "Antigravity Linux Governance Framework",
-  "version": "4.4.0",
-  "architecture": "Engenharia Sincera: Agentes Nativos (plugin/agents/*.md) + Guardião de Runtime em Python + Gestor Legislativo",
+  "version": "5.0.0",
+  "architecture": "Engenharia Sincera: Agentes Nativos (plugin/agents/*.md) + Guardião de Runtime em Go + Gestor Legislativo",
   "components": [
     {
       "name": "agente-bash",
@@ -15,11 +15,11 @@
       "enable_subagent_tools": true
     },
     {
-      "name": "governance_gate_py",
+      "name": "governance_gate",
       "type": "runtime_engine",
       "role": "Motor de governança semântica e guardrail no runtime (PreToolUse)",
-      "description": "Script Python nativo executado como hook PreToolUse pelo Antigravity. Aplica as regras de segurança (RULE-01 a RULE-15), veto sumário a destruição/mutação de caminhos vitais, auto-compressão de saídas e cache local com TTL. Guardrail para agente cooperativo — não é sandbox de isolamento.",
-      "file": "plugin/hooks/governance-gate.py"
+      "description": "Binário Go nativo executado como hook PreToolUse pelo Antigravity. Aplica as regras de segurança (RULE-02 a RULE-15), veto sumário a destruição/mutação de caminhos vitais, auto-compressão de saídas e cache local com TTL. Guardrail para agente cooperativo — não é sandbox de isolamento.",
+      "file": "plugin/hooks/governance-gate"
     },
     {
       "name": "agente-sudo-policy",

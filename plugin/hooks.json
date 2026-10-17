@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 __GATE_PATH__",
+            "command": "__GATE_PATH__",
             "timeout": 15
           }
         ]

@@ -22,13 +22,13 @@ Ativado via slash command `/agente-sudo-policy` ou menção `@agente-sudo-policy
 
 ## Mediação Flexível e Tratamento de Impasses
 
-Diante de uma retenção ou veto persistente do motor `governance-gate.py` (`force_ask`, `deny`) ou limite de recusas (3X) do `@agente-bash`:
+Diante de uma retenção ou veto persistente do motor `governance-gate` (`force_ask`, `deny`) ou limite de recusas (3X) do `@agente-bash`:
 
 - **Cenário A (Inflexão Real / Bloqueio Insuperável):**
   Se a ação for indispensável e sem rota alternativa segura:
   ```text
   ⚠️ [CONSULTA DE REVISÃO CONSTITUCIONAL — SUDO-POLICY]
-  • Demanda: O @agente-bash necessita de permissão para uma ação atualmente retida ou bloqueada pelo governance-gate.py.
+  • Demanda: O @agente-bash necessita de permissão para uma ação atualmente retida ou bloqueada pelo governance-gate.
   • Contexto da Quebra: <O que o bash precisa resolver e por que a política atual trava a solução>
   • Regra em Conflito: <Regra em policies.json que precisaria ser flexibilizada ou ajustada>
   • Parecer do sudo-policy: "Julgo que esta ação é necessária e não há rota segura alternativa sem flexibilizar esta diretriz."

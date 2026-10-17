@@ -1,19 +1,29 @@
 #!/usr/bin/env bash
+# =============================================================================
+# Instalador: Sistema de Governança de Agentes (v5.0.0 — Runtime Go Nativo)
+# Um único binário estático. Zero Python, zero pip, zero interpretador.
+# =============================================================================
 set -euo pipefail
 
 echo "=========================================================="
-echo " Instalador: Sistema de Governança de Agentes (v4.5.0 Python)"
+echo " Instalador: Sistema de Governança de Agentes (v5.0.0 Go)"
 echo "=========================================================="
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "❌ Erro: python3 não está instalado no sistema."
+# -----------------------------------------------------------------------------
+# [1/6] Pré-requisito: toolchain Go >= 1.22 no host de build.
+#       (Não baixamos toolchain silenciosamente — apenas documentamos.)
+# -----------------------------------------------------------------------------
+if ! command -v go >/dev/null 2>&1; then
+    echo "❌ Erro: Go não encontrado no PATH (requerido >= 1.22 para build)."
+    echo "   Instale o toolchain Go 1.22+ e repita."
     exit 1
 fi
 
-# O motor usa `from __future__ import annotations`, então PEP 604 (`str | None`)
-# e PEP 585 (`list[str]`) são válidos a partir do Python 3.8.
-if ! python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
-    echo "❌ Erro: Requer Python 3.8 ou superior."
+GO_VERSION="$(go env GOVERSION 2>/dev/null | sed 's/^go//')"
+GO_MAJOR="${GO_VERSION%%.*}"
+GO_MINOR="$(printf '%s' "$GO_VERSION" | cut -d. -f2)"
+if [ -z "$GO_MAJOR" ] || [ "$GO_MAJOR" -lt 1 ] || { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 22 ]; }; then
+    echo "❌ Erro: Go $GO_VERSION encontrado, mas é requerido Go >= 1.22."
     exit 1
 fi
 
@@ -22,11 +32,22 @@ TARGET_PLUGIN_DIR="$HOME/.gemini/config/plugins/bash-sudo-agents"
 TARGET_AGENTS_DIR="$HOME/.gemini/config/agents"
 TARGET_SECURITY_DIR="$HOME/.gemini/antigravity/scratch/security"
 BACKUP_DIR="$HOME/.gemini/antigravity/scratch/backups"
+BUILD_DIR="$SCRIPT_DIR/build"
 
-echo "[1/5] Criando diretórios de destino..."
+# -----------------------------------------------------------------------------
+# [2/6] Build estático (CGO desabilitado, stripped, sem path de build).
+# -----------------------------------------------------------------------------
+echo "[1/6] Compilando o motor Go (estático, CGO_ENABLED=0)..."
+mkdir -p "$BUILD_DIR"
+GATE_BIN="$BUILD_DIR/governance-gate"
+( cd "$SCRIPT_DIR" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$GATE_BIN" ./cmd/governance-gate )
+
+# -----------------------------------------------------------------------------
+# [3/6] Diretórios de destino + backup atômico da instalação anterior.
+# -----------------------------------------------------------------------------
+echo "[2/6] Criando diretórios e fazendo backup atômico..."
 mkdir -p "$TARGET_PLUGIN_DIR/hooks" "$TARGET_PLUGIN_DIR/agents" "$TARGET_AGENTS_DIR" "$TARGET_SECURITY_DIR" "$BACKUP_DIR"
 
-echo "[2/5] Backup atômico das instalações anteriores..."
 chmod -R u+rwX "$TARGET_PLUGIN_DIR" 2>/dev/null || true
 chmod -R u+rwX "$TARGET_AGENTS_DIR" 2>/dev/null || true
 chmod -R u+rwX "$TARGET_SECURITY_DIR" 2>/dev/null || true
@@ -39,50 +60,54 @@ for src_dir in "$TARGET_PLUGIN_DIR" "$TARGET_SECURITY_DIR" "$TARGET_AGENTS_DIR";
     fi
 done
 
-echo "[3/5] Instalando plugin de agentes e motor Python..."
+# -----------------------------------------------------------------------------
+# [4/6] Instalação atômica do binário + plugin + políticas.
+# -----------------------------------------------------------------------------
+echo "[3/6] Instalando binário, plugin e políticas..."
+GATE_ABS="$TARGET_PLUGIN_DIR/hooks/governance-gate"
+
+# Escrita atômica: nunca sobrescrever um binário em execução (tmp + rename).
+cp -f "$GATE_BIN" "$GATE_ABS.tmp.$$"
+chmod 0755 "$GATE_ABS.tmp.$$"
+mv -f "$GATE_ABS.tmp.$$" "$GATE_ABS"
+
 cp -r "$SCRIPT_DIR/plugin/"* "$TARGET_PLUGIN_DIR/"
 cp -r "$SCRIPT_DIR/plugin/agents/"*.md "$TARGET_AGENTS_DIR/"
-find "$TARGET_PLUGIN_DIR" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
-
-echo "[4/5] Instalando políticas de segurança e metagovernança..."
 cp -r "$SCRIPT_DIR/security/"* "$TARGET_SECURITY_DIR/"
 
-# Resolução determinística do caminho do motor: substitui o placeholder
-# `__GATE_PATH__` por um caminho ABSOLUTO, para que o hook não dependa do cwd
-# com que o Antigravity o invoque.
-GATE_ABS="$TARGET_PLUGIN_DIR/hooks/governance-gate.py"
-python3 - "$SCRIPT_DIR/plugin/hooks.json" "$TARGET_PLUGIN_DIR/hooks.json" "$GATE_ABS" <<'PY'
-import json
-import sys
+# Purga de qualquer resíduo de instalações anteriores (v4.x): o diretório de
+# hooks deve conter apenas o binário do motor.
+find "$TARGET_PLUGIN_DIR/hooks" -mindepth 1 -maxdepth 1 ! -name 'governance-gate' -exec rm -rf {} + 2>/dev/null || true
 
-template, destination, gate = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(template, encoding="utf-8") as fh:
-    data = json.load(fh)
+# -----------------------------------------------------------------------------
+# [5/6] Registro do hook por template puro (render-hooks do próprio binário).
+# -----------------------------------------------------------------------------
+echo "[4/6] Registrando hooks.json via 'governance-gate render-hooks'..."
+"$GATE_ABS" render-hooks \
+    --template "$SCRIPT_DIR/plugin/hooks.json" \
+    --out "$TARGET_PLUGIN_DIR/hooks.json" \
+    --gate "$GATE_ABS"
 
-for entry in data.values():
-    if not isinstance(entry, dict):
-        continue
-    for group in entry.get("PreToolUse", []):
-        for hook in group.get("hooks", []):
-            if "command" in hook:
-                hook["command"] = f"python3 {gate}"
+# -----------------------------------------------------------------------------
+# [6/6] Smoke test sem interpretador + blindagem somente-leitura.
+# -----------------------------------------------------------------------------
+echo "[5/6] Smoke test do motor (stdin/stdout, fail-closed)..."
 
-with open(destination, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, indent=2, ensure_ascii=False)
-    fh.write("\n")
-PY
-
-echo "[5/5] Verificando o motor e aplicando blindagem somente-leitura (chmod 444)..."
-
-# Smoke test: garante que o motor importa (Python compatível) e responde JSON.
-SMOKE_OUTPUT=$(printf '%s' '{"toolCall":{"name":"run_command","args":{"CommandLine":"lscpu","Cwd":"'"$HOME"'"}}}' | python3 "$GATE_ABS" 2>/dev/null || true)
+SMOKE_OUTPUT=$(printf '%s' '{"toolCall":{"name":"run_command","args":{"CommandLine":"lscpu","Cwd":"'"$HOME"'"}}}' | "$GATE_ABS" 2>/dev/null || true)
 if ! printf '%s' "$SMOKE_OUTPUT" | grep -q '"decision"'; then
-    echo "❌ Erro: o motor governance-gate.py não respondeu corretamente (verifique a versão do Python)."
+    echo "❌ Erro: o motor Go não respondeu corretamente."
     exit 1
 fi
 
-chmod 555 "$GATE_ABS" 2>/dev/null || true
-chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" \
+EMPTY_OUTPUT=$(printf '' | "$GATE_ABS" 2>/dev/null || true)
+if ! printf '%s' "$EMPTY_OUTPUT" | grep -q '"force_ask"'; then
+    echo "❌ Erro: fail-closed de stdin vazio não está ativo."
+    exit 1
+fi
+
+echo "[6/6] Aplicando blindagem somente-leitura (chmod 444)..."
+chmod 0755 "$GATE_ABS" 2>/dev/null || true
+chmod 0444 "$TARGET_PLUGIN_DIR/hooks.json" \
           "$TARGET_PLUGIN_DIR/plugin.json" \
           "$TARGET_PLUGIN_DIR/rules/AGENTS.md" \
           "$TARGET_PLUGIN_DIR/agents/"*.md \
@@ -91,8 +116,13 @@ chmod 444 "$TARGET_PLUGIN_DIR/hooks.json" \
           "$TARGET_SECURITY_DIR/"*.json \
           "$TARGET_SECURITY_DIR/"*.md 2>/dev/null || true
 
+# chattr +i é opcional e requer privilégio/FS compatível (documentado).
+if command -v chattr >/dev/null 2>&1; then
+    chattr +i "$GATE_ABS" 2>/dev/null || true
+fi
+
 echo ""
-echo "✅ Instalação v4.5.0 (Python Engine + Anti-Fadiga auto_approve) concluída com sucesso!"
+echo "✅ Instalação v5.0.0 (Go Nativo — auto_approve, cache atômico, flock) concluída!"
 echo "Plugin:    $TARGET_PLUGIN_DIR"
 echo "Políticas: $TARGET_SECURITY_DIR"
 echo "Hook:      $GATE_ABS"

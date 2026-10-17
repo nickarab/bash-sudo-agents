@@ -1,0 +1,168 @@
+{"name": "rm -rf /", "cmd": "rm -rf /", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /*", "cmd": "rm -rf /*", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /etc/*", "cmd": "rm -rf /etc/*", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf --no-preserve-root /", "cmd": "rm -rf --no-preserve-root /", "want": "deny", "cwd": "HOME"}
+{"name": "sudo rm -rf /", "cmd": "sudo rm -rf /", "want": "deny", "cwd": "HOME"}
+{"name": "echo x; rm -rf /", "cmd": "echo x; rm -rf /", "want": "deny", "cwd": "HOME"}
+{"name": "cd / && rm -rf /usr", "cmd": "cd / && rm -rf /usr", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf ~/", "cmd": "rm -rf ~/", "want": "deny", "cwd": "HOME"}
+{"name": "rm -fr /", "cmd": "rm -fr /", "want": "deny", "cwd": "HOME"}
+{"name": "find / -type f -delete", "cmd": "find / -type f -delete", "want": "deny", "cwd": "HOME"}
+{"name": "shred -u /dev/sda", "cmd": "shred -u /dev/sda", "want": "deny", "cwd": "HOME"}
+{"name": "dd if=/dev/zero of=/dev/sda", "cmd": "dd if=/dev/zero of=/dev/sda", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf ../", "cmd": "rm -rf ../", "want": "deny", "cwd": "HOME"}
+{"name": "$(rm -rf /)", "cmd": "$(rm -rf /)", "want": "deny", "cwd": "HOME"}
+{"name": "`rm -rf /`", "cmd": "`rm -rf /`", "want": "deny", "cwd": "HOME"}
+{"name": "( rm -rf / )", "cmd": "( rm -rf / )", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /home/user/Downloads/old", "cmd": "rm -rf /home/user/Downloads/old", "want": "auto_approve", "cwd": "HOME"}
+{"name": "rm -rf ~/Downloads", "cmd": "rm -rf ~/Downloads", "want": "auto_approve", "cwd": "HOME"}
+{"name": "rm -rf ~/../../etc", "cmd": "rm -rf ~/../../etc", "want": "deny", "cwd": "HOME"}
+{"name": "rm -Rf /", "cmd": "rm -Rf /", "want": "deny", "cwd": "HOME"}
+{"name": "rm --recursive /etc", "cmd": "rm --recursive /etc", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /e?c", "cmd": "rm -rf /e?c", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /e[t]c", "cmd": "rm -rf /e[t]c", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /{etc,usr}", "cmd": "rm -rf /{etc,usr}", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /h?me", "cmd": "rm -rf /h?me", "want": "deny", "cwd": "HOME"}
+{"name": "find / -type f -exec rm {} \\;", "cmd": "find / -type f -exec rm {} \\;", "want": "deny", "cwd": "HOME"}
+{"name": "find / -execdir rm -rf {} \\;", "cmd": "find / -execdir rm -rf {} \\;", "want": "deny", "cwd": "HOME"}
+{"name": "find / -ok rm {} \\;", "cmd": "find / -ok rm {} \\;", "want": "deny", "cwd": "HOME"}
+{"name": "find /etc -fprint /etc/passwd", "cmd": "find /etc -fprint /etc/passwd", "want": "deny", "cwd": "HOME"}
+{"name": "rm /etc/passwd", "cmd": "rm /etc/passwd", "want": "deny", "cwd": "HOME"}
+{"name": "rm /etc/shadow", "cmd": "rm /etc/shadow", "want": "deny", "cwd": "HOME"}
+{"name": "rm /etc/fstab", "cmd": "rm /etc/fstab", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /root", "cmd": "rm -rf /root", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /opt", "cmd": "rm -rf /opt", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /srv", "cmd": "rm -rf /srv", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /mnt", "cmd": "rm -rf /mnt", "want": "deny", "cwd": "HOME"}
+{"name": "rm -rf /tmp/build", "cmd": "rm -rf /tmp/build", "want": "auto_approve", "cwd": "HOME"}
+{"name": "rm -rf /home/user/Downloads/old", "cmd": "rm -rf /home/user/Downloads/old", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo $PATH", "cmd": "echo $PATH", "want": "auto_approve", "cwd": "HOME"}
+{"name": "shred -u ~/notes.txt", "cmd": "shred -u ~/notes.txt", "want": "auto_approve", "cwd": "HOME"}
+{"name": "./sudo_runner.sh", "cmd": "./sudo_runner.sh", "want": "deny", "cwd": "HOME"}
+{"name": "bash /opt/sudo_runner.sh", "cmd": "bash /opt/sudo_runner.sh", "want": "deny", "cwd": "HOME"}
+{"name": "systemctl stop sddm", "cmd": "systemctl stop sddm", "want": "deny", "cwd": "HOME"}
+{"name": "systemctl restart sddm", "cmd": "systemctl restart sddm", "want": "deny", "cwd": "HOME"}
+{"name": "systemctl stop --user hyprland", "cmd": "systemctl stop --user hyprland", "want": "deny", "cwd": "HOME"}
+{"name": "pkill hyprland", "cmd": "pkill hyprland", "want": "deny", "cwd": "HOME"}
+{"name": "kill -9 1", "cmd": "kill -9 1", "want": "deny", "cwd": "HOME"}
+{"name": "systemctl reboot", "cmd": "systemctl reboot", "want": "force_ask", "cwd": "HOME"}
+{"name": "systemctl poweroff", "cmd": "systemctl poweroff", "want": "force_ask", "cwd": "HOME"}
+{"name": "sudo systemctl reboot", "cmd": "sudo systemctl reboot", "want": "force_ask", "cwd": "HOME"}
+{"name": "shutdown -h now", "cmd": "shutdown -h now", "want": "force_ask", "cwd": "HOME"}
+{"name": "reboot", "cmd": "reboot", "want": "force_ask", "cwd": "HOME"}
+{"name": "poweroff", "cmd": "poweroff", "want": "force_ask", "cwd": "HOME"}
+{"name": "systemctl suspend", "cmd": "systemctl suspend", "want": "force_ask", "cwd": "HOME"}
+{"name": "systemctl suspend-then-hibernate", "cmd": "systemctl suspend-then-hibernate", "want": "force_ask", "cwd": "HOME"}
+{"name": "loginctl lock-session", "cmd": "loginctl lock-session", "want": "force_ask", "cwd": "HOME"}
+{"name": "chmod -R 777 /usr", "cmd": "chmod -R 777 /usr", "want": "deny", "cwd": "HOME"}
+{"name": "chmod 777 -R /etc", "cmd": "chmod 777 -R /etc", "want": "deny", "cwd": "HOME"}
+{"name": "chmod -R a+w /usr", "cmd": "chmod -R a+w /usr", "want": "deny", "cwd": "HOME"}
+{"name": "chmod -R o+w /var", "cmd": "chmod -R o+w /var", "want": "deny", "cwd": "HOME"}
+{"name": "chown -R root /etc", "cmd": "chown -R root /etc", "want": "deny", "cwd": "HOME"}
+{"name": "chown --recursive root /etc", "cmd": "chown --recursive root /etc", "want": "deny", "cwd": "HOME"}
+{"name": "chmod -R 755 /etc", "cmd": "chmod -R 755 /etc", "want": "deny", "cwd": "HOME"}
+{"name": "sudo chmod 777 -R /etc", "cmd": "sudo chmod 777 -R /etc", "want": "deny", "cwd": "HOME"}
+{"name": "chmod -R 755 ~/proj", "cmd": "chmod -R 755 ~/proj", "want": "auto_approve", "cwd": "HOME"}
+{"name": "chmod 777 /tmp/x", "cmd": "chmod 777 /tmp/x", "want": "auto_approve", "cwd": "HOME"}
+{"name": "chown -R user:user ~/proj", "cmd": "chown -R user:user ~/proj", "want": "auto_approve", "cwd": "HOME"}
+{"name": "mkfs.ext4 /dev/sdb1", "cmd": "mkfs.ext4 /dev/sdb1", "want": "force_ask", "cwd": "HOME"}
+{"name": "fdisk /dev/sdb", "cmd": "fdisk /dev/sdb", "want": "force_ask", "cwd": "HOME"}
+{"name": "mount /dev/sdb1 /mnt", "cmd": "mount /dev/sdb1 /mnt", "want": "force_ask", "cwd": "HOME"}
+{"name": "cryptsetup luksFormat /dev/sdb", "cmd": "cryptsetup luksFormat /dev/sdb", "want": "force_ask", "cwd": "HOME"}
+{"name": "sudo apt update", "cmd": "sudo apt update", "want": "ask", "cwd": "HOME"}
+{"name": "run0 systemctl restart nginx", "cmd": "run0 systemctl restart nginx", "want": "ask", "cwd": "HOME"}
+{"name": "yay -S firefox", "cmd": "yay -S firefox", "want": "ask", "cwd": "HOME"}
+{"name": "yay -Syu", "cmd": "yay -Syu", "want": "ask", "cwd": "HOME"}
+{"name": "paru -Syu", "cmd": "paru -Syu", "want": "ask", "cwd": "HOME"}
+{"name": "pacman -Sy firefox", "cmd": "pacman -Sy firefox", "want": "ask", "cwd": "HOME"}
+{"name": "pacman -Syu --noconfirm", "cmd": "pacman -Syu --noconfirm", "want": "ask", "cwd": "HOME"}
+{"name": "sudoedit /etc/fstab", "cmd": "sudoedit /etc/fstab", "want": "ask", "cwd": "HOME"}
+{"name": "sudo -e /etc/fstab", "cmd": "sudo -e /etc/fstab", "want": "ask", "cwd": "HOME"}
+{"name": "sudo --edit /etc/fstab", "cmd": "sudo --edit /etc/fstab", "want": "ask", "cwd": "HOME"}
+{"name": "echo su", "cmd": "echo su", "want": "auto_approve", "cwd": "HOME"}
+{"name": "systemctl start redshift --user", "cmd": "systemctl start redshift --user", "want": "auto_approve", "cwd": "HOME"}
+{"name": "yay -Ss firefox", "cmd": "yay -Ss firefox", "want": "auto_approve", "cwd": "HOME"}
+{"name": "$(which sudo) ls /root", "cmd": "$(which sudo) ls /root", "want": "ask", "cwd": "HOME"}
+{"name": "echo x > ~/.gemini/config/hooks.json", "cmd": "echo x > ~/.gemini/config/hooks.json", "want": "deny", "cwd": "HOME"}
+{"name": "cd ~/.gemini/config && rm hooks.json", "cmd": "cd ~/.gemini/config && rm hooks.json", "want": "deny", "cwd": "HOME"}
+{"name": "cd ~ && rm -rf .gemini/config", "cmd": "cd ~ && rm -rf .gemini/config", "want": "deny", "cwd": "HOME"}
+{"name": "ls ~/.gemini/config/plugins/bash-sudo-agents/ 2>", "cmd": "ls ~/.gemini/config/plugins/bash-sudo-agents/ 2>&1", "want": "auto_approve", "cwd": "HOME"}
+{"name": "chmod 777 ~/.gemini/config/plugins/bash-sudo-age", "cmd": "chmod 777 ~/.gemini/config/plugins/bash-sudo-agents/rules/AGENTS.md", "want": "deny", "cwd": "HOME"}
+{"name": "rsync -a x/ ~/.gemini/config/plugins/bash-sudo-a", "cmd": "rsync -a x/ ~/.gemini/config/plugins/bash-sudo-agents/", "want": "deny", "cwd": "HOME"}
+{"name": "tar -xf a.tar -C ~/.gemini/config/plugins/bash-s", "cmd": "tar -xf a.tar -C ~/.gemini/config/plugins/bash-sudo-agents/", "want": "deny", "cwd": "HOME"}
+{"name": "ln -sf /tmp/x ~/.gemini/config/plugins/bash-sudo", "cmd": "ln -sf /tmp/x ~/.gemini/config/plugins/bash-sudo-agents/hooks/governance-gate", "want": "deny", "cwd": "HOME"}
+{"name": "git commit -m \"fix: nunca rodar rm -rf / de novo", "cmd": "git commit -m \"fix: nunca rodar rm -rf / de novo\"", "want": "auto_approve", "cwd": "HOME"}
+{"name": "git commit -m 'fix: nunca rodar rm -rf / de novo", "cmd": "git commit -m 'fix: nunca rodar rm -rf / de novo'", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo \"use rm -rf /path com cuidado\"", "cmd": "echo \"use rm -rf /path com cuidado\"", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo \"vou dar reboot\"", "cmd": "echo \"vou dar reboot\"", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo \"$(rm -rf /)\"", "cmd": "echo \"$(rm -rf /)\"", "want": "deny", "cwd": "HOME"}
+{"name": "mv /etc/fstab /tmp/f", "cmd": "mv /etc/fstab /tmp/f", "want": "deny", "cwd": "HOME"}
+{"name": "cp /tmp/x /etc/fstab", "cmd": "cp /tmp/x /etc/fstab", "want": "deny", "cwd": "HOME"}
+{"name": "cp x \"/etc/fstab\"", "cmd": "cp x \"/etc/fstab\"", "want": "deny", "cwd": "HOME"}
+{"name": "install -m 644 x /usr/bin/y", "cmd": "install -m 644 x /usr/bin/y", "want": "deny", "cwd": "HOME"}
+{"name": "truncate -s 0 /etc/shadow", "cmd": "truncate -s 0 /etc/shadow", "want": "deny", "cwd": "HOME"}
+{"name": "tee /etc/hosts", "cmd": "tee /etc/hosts", "want": "deny", "cwd": "HOME"}
+{"name": "ln -sf /tmp/x /etc/passwd", "cmd": "ln -sf /tmp/x /etc/passwd", "want": "deny", "cwd": "HOME"}
+{"name": "echo x > /etc/fstab", "cmd": "echo x > /etc/fstab", "want": "deny", "cwd": "HOME"}
+{"name": "echo x 1>/etc/fstab", "cmd": "echo x 1>/etc/fstab", "want": "deny", "cwd": "HOME"}
+{"name": "echo x > /dev/null", "cmd": "echo x > /dev/null", "want": "auto_approve", "cwd": "HOME"}
+{"name": "cp /etc/fstab /tmp/backup", "cmd": "cp /etc/fstab /tmp/backup", "want": "auto_approve", "cwd": "HOME"}
+{"name": "mv /tmp/a /tmp/b", "cmd": "mv /tmp/a /tmp/b", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo x > ~/notas.txt", "cmd": "echo x > ~/notas.txt", "want": "auto_approve", "cwd": "HOME"}
+{"name": "ls /etc 2>&1", "cmd": "ls /etc 2>&1", "want": "auto_approve", "cwd": "HOME"}
+{"name": "ln -s /usr/bin/python3 ~/.local/bin/py", "cmd": "ln -s /usr/bin/python3 ~/.local/bin/py", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo x >> /var/log/syslog", "cmd": "echo x >> /var/log/syslog", "want": "ask", "cwd": "HOME"}
+{"name": "truncate -s 0 /var/log/syslog", "cmd": "truncate -s 0 /var/log/syslog", "want": "ask", "cwd": "HOME"}
+{"name": "bash -c \"rm -rf /\"", "cmd": "bash -c \"rm -rf /\"", "want": "deny", "cwd": "HOME"}
+{"name": "sh -c \"mv /etc/hosts /tmp\"", "cmd": "sh -c \"mv /etc/hosts /tmp\"", "want": "deny", "cwd": "HOME"}
+{"name": "su -c \"rm -rf /\" root", "cmd": "su -c \"rm -rf /\" root", "want": "deny", "cwd": "HOME"}
+{"name": "python3 -c \"import shutil; shutil.rmtree('/etc')", "cmd": "python3 -c \"import shutil; shutil.rmtree('/etc')\"", "want": "deny", "cwd": "HOME"}
+{"name": "python3 -c \"import os; os.system('rm -rf /')\"", "cmd": "python3 -c \"import os; os.system('rm -rf /')\"", "want": "deny", "cwd": "HOME"}
+{"name": "python3 -c \"import shutil; shutil.rmtree('/')\"", "cmd": "python3 -c \"import shutil; shutil.rmtree('/')\"", "want": "deny", "cwd": "HOME"}
+{"name": "node -e 'require(\"fs\").rmSync(\"/\", {recursive:tr", "cmd": "node -e 'require(\"fs\").rmSync(\"/\", {recursive:true})'", "want": "deny", "cwd": "HOME"}
+{"name": "perl -e \"unlink('/etc/passwd')\"", "cmd": "perl -e \"unlink('/etc/passwd')\"", "want": "force_ask", "cwd": "HOME"}
+{"name": "ruby -e \"File.delete('/etc/fstab')\"", "cmd": "ruby -e \"File.delete('/etc/fstab')\"", "want": "force_ask", "cwd": "HOME"}
+{"name": "python3 -c \"print(1)\"", "cmd": "python3 -c \"print(1)\"", "want": "auto_approve", "cwd": "HOME"}
+{"name": "python3 -m pytest", "cmd": "python3 -m pytest", "want": "auto_approve", "cwd": "HOME"}
+{"name": "node -e \"console.log(1)\"", "cmd": "node -e \"console.log(1)\"", "want": "auto_approve", "cwd": "HOME"}
+{"name": "python3 script.py", "cmd": "python3 script.py", "want": "auto_approve", "cwd": "HOME"}
+{"name": "python3 -c \"open('/tmp/x/.gemini/config/plugins/", "cmd": "python3 -c \"open('/tmp/x/.gemini/config/plugins/bash-sudo-agents/x','w')\"", "want": "deny", "cwd": "HOME"}
+{"name": "sed -i 's/a/b/' /etc/hosts", "cmd": "sed -i 's/a/b/' /etc/hosts", "want": "deny", "cwd": "HOME"}
+{"name": "perl -pi -e 's/a/b/' /etc/hosts", "cmd": "perl -pi -e 's/a/b/' /etc/hosts", "want": "deny", "cwd": "HOME"}
+{"name": "tar xf /tmp/x.tar -C /etc", "cmd": "tar xf /tmp/x.tar -C /etc", "want": "deny", "cwd": "HOME"}
+{"name": "rsync -a /tmp/x/ /etc/", "cmd": "rsync -a /tmp/x/ /etc/", "want": "deny", "cwd": "HOME"}
+{"name": "sed -n '1,10p' /etc/hosts", "cmd": "sed -n '1,10p' /etc/hosts", "want": "auto_approve", "cwd": "HOME"}
+{"name": "tar xf arquivo.tar", "cmd": "tar xf arquivo.tar", "want": "auto_approve", "cwd": "HOME"}
+{"name": "rsync -a ./src/ ./build/", "cmd": "rsync -a ./src/ ./build/", "want": "auto_approve", "cwd": "HOME"}
+{"name": "grep -i host /etc/hosts", "cmd": "grep -i host /etc/hosts", "want": "auto_approve", "cwd": "HOME"}
+{"name": "cp app.tar.gz $DIST_DIR/", "cmd": "cp app.tar.gz $DIST_DIR/", "want": "force_ask", "cwd": "HOME"}
+{"name": "mv $BUILD/out ./", "cmd": "mv $BUILD/out ./", "want": "force_ask", "cwd": "HOME"}
+{"name": "echo x > $LOG/file", "cmd": "echo x > $LOG/file", "want": "force_ask", "cwd": "HOME"}
+{"name": "lscpu", "cmd": "lscpu", "want": "auto_approve", "cwd": "HOME"}
+{"name": "journalctl -u ssh", "cmd": "journalctl -u ssh", "want": "auto_approve", "cwd": "HOME"}
+{"name": "echo olá mundo", "cmd": "echo olá mundo", "want": "auto_approve", "cwd": "HOME"}
+{"name": "ls -la", "cmd": "ls -la", "want": "auto_approve", "cwd": "HOME"}
+{"name": "cat /etc/os-release", "cmd": "cat /etc/os-release", "want": "auto_approve", "cwd": "HOME"}
+{"name": "cat /etc/passwd", "cmd": "cat /etc/passwd", "want": "auto_approve", "cwd": "HOME"}
+{"name": "sed -i 's/a/b/' ~/.config/hypr/monitors.lua", "cmd": "sed -i 's/a/b/' ~/.config/hypr/monitors.lua", "want": "auto_approve", "cwd": "HOME"}
+{"name": "journalctl compressor", "cmd": "journalctl -u ssh", "want": "auto_approve", "ow": "contains:--no-pager -n 35"}
+{"name": "journalctl follow não comprime", "cmd": "journalctl --follow", "want": "auto_approve", "ow": "not_contains:--no-pager"}
+{"name": "journalctl_evil não comprime", "cmd": "journalctl_evil", "want": "auto_approve", "ow": "absent"}
+{"name": "dmesg compressor", "cmd": "dmesg", "want": "auto_approve", "ow": "contains:tail -n 35"}
+{"name": "dmesg -w não comprime", "cmd": "dmesg -w", "want": "auto_approve", "ow": "not_contains:tail -n 35"}
+{"name": "git log compressor", "cmd": "git log", "want": "auto_approve", "ow": "contains:-n 15"}
+{"name": "git loganything não comprime", "cmd": "git loganything", "want": "auto_approve", "ow": "absent"}
+{"name": "lscpu cache write", "cmd": "lscpu", "want": "auto_approve", "ow": "contains:cache-write"}
+{"name": "cat os-release cache write", "cmd": "cat /etc/os-release", "want": "auto_approve", "ow": "contains:cache-write"}
+{"name": "cat passwd sem cache", "cmd": "cat /etc/passwd", "want": "auto_approve", "ow": "absent"}
+{"name": "yay -Ss cache+limiter", "cmd": "yay -Ss firefox", "want": "auto_approve", "ow": "contains:head -n 25"}
+{"name": "payload malformado", "stdin": "not-json{", "want": "force_ask"}
+{"name": "stdin vazio", "stdin": "", "want": "force_ask"}
+{"name": "stdin whitespace", "stdin": "   \n\t ", "want": "force_ask"}
+{"name": "tool desconhecida", "payload": {"toolCall": {"name": "ferramenta_desconhecida", "args": {}}}, "want": "force_ask"}
+{"name": "run_command vazio", "payload": {"toolCall": {"name": "run_command", "args": {"CommandLine": ""}}}, "want": "force_ask"}
+{"name": "view_file", "payload": {"toolCall": {"name": "view_file", "args": {"AbsolutePath": "/x"}}}, "want": "auto_approve"}
+{"name": "find_by_name", "payload": {"toolCall": {"name": "find_by_name", "args": {"Pattern": "*.rs"}}}, "want": "auto_approve"}
+{"name": "multi_replace write", "payload": {"toolCall": {"name": "multi_replace_file_content", "args": {"TargetFile": "HOME/main.rs"}}}, "want": "allow"}
+{"name": "workspace .agents/hooks.json", "payload": {"toolCall": {"name": "run_command", "args": {"CommandLine": "rm .agents/hooks.json", "Cwd": "WS"}}}, "workspaces": ["WS"], "want": "deny"}
+{"name": "target gov write_to_file", "payload": {"toolCall": {"name": "write_to_file", "args": {"TargetFile": "GOV/AGENTS.md"}}}, "want": "deny"}

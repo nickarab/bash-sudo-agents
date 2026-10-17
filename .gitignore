@@ -11,6 +11,8 @@ sudo_runner.sh
 # Backups
 backup_*/
 
-# Python cache
-__pycache__/
-*.pyc
+# Artefatos de build Go
+build/
+*.test
+*.out
+coverage.out
